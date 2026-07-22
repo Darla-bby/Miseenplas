@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Mise — Agentic food costing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --accent:#DFFF00;
+  --bg:#0B0E14; --text:#fafafa;
+  --surface:#141822;
+  --surface-hover:#1b2130;
+  --field-hover:#27272a;
+  --field-focus:#3f3f46;
+  --mid:#d4d4d8; --lo:#a1a1aa; --faint:#a1a1aa;
+  --chip:#1b2130;
+  --accent-text:#DFFF00;
+  --track:#2a3244;
+  --glow:.05;
+  --rule:rgba(255,255,255,.22);
+}
+[data-theme="light"]{
+  --bg:#ffffff; --text:#09090b;
+  --surface:#f4f4f5;
+  --surface-hover:#e4e4e7;
+  --field-hover:#e4e4e7;
+  --field-focus:#d4d4d8;
+  --mid:#3f3f46; --lo:#52525b; --faint:#52525b;
+  --chip:#f4f4f5;
+  --accent-text:#4d5600;
+  --track:#d4d4d8;
+  --glow:.11;
+  --rule:rgba(9,9,11,.22);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Archivo',system-ui,sans-serif; letter-spacing:-.018em;
+  -webkit-font-smoothing:antialiased;
+  transition:background .5s ease,color .5s ease;
+  overflow:hidden;
+}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent-text);outline-offset:3px;border-radius:12px}
+
+#void{position:fixed;top:-32%;left:-14%;width:96vw;height:108vh;pointer-events:none;z-index:0;
+  background:radial-gradient(circle at 50% 50%, var(--accent) 0%, transparent 66%);
+  opacity:var(--glow); filter:blur(150px);}
+
+#app{position:relative;z-index:1;display:flex;height:100%;overflow:hidden}
+
+/* rail */
+#rail{display:none;flex-direction:column;width:210px;flex-shrink:0;padding:24px 16px}
+@media(min-width:860px){#rail{display:flex}}
+.brand{display:flex;align-items:center;gap:10px;padding:0 12px;margin-bottom:24px}
+.brand-mark{position:relative;width:32px;height:32px;border-radius:12px;background:var(--accent);display:grid;place-items:center;flex-shrink:0}
+.brand-mark::before{content:"";position:absolute;inset:0;border-radius:12px;background:var(--accent);filter:blur(16px);opacity:.6}
+[data-theme="light"] .brand-mark::before{opacity:.35}
+.brand-mark svg{position:relative;color:#000}
+.brand-name{font-weight:800;letter-spacing:-.03em;font-size:15px;line-height:1}
+.brand-sub{font-size:8px;text-transform:uppercase;letter-spacing:.24em;color:var(--faint);margin-top:4px}
+
+.identity{margin:0 4px 28px;padding:10px 12px;border-radius:16px;background:var(--chip);display:flex;align-items:center;gap:10px}
+.dot{width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;animation:livePulse 2.2s ease-in-out infinite}
+@keyframes livePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(74,222,128,.6)}50%{opacity:.65;box-shadow:0 0 0 5px rgba(74,222,128,0)}}
+.identity-l{font-size:7.5px;text-transform:uppercase;letter-spacing:.2em;color:var(--faint)}
+.identity-v{font-size:9.5px;color:var(--mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.navbtn{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;font-size:13px;font-weight:600;
+  text-align:left;color:var(--lo);transition:all .3s ease;width:100%}
+.navbtn:hover{color:var(--mid)}
+.navbtn.on{color:var(--accent-text);background:rgba(223,255,0,.06)}
+[data-theme="light"] .navbtn.on{background:rgba(95,107,0,.07)}
+.navbtn.on svg{filter:drop-shadow(0 0 8px rgba(223,255,0,.9))}
+[data-theme="light"] .navbtn.on svg{filter:none}
+#themeBtn{margin-top:auto;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;font-size:12.5px;font-weight:600;color:var(--lo)}
+#themeBtn:hover{background:var(--surface-hover)}
+
+/* main */
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#topbar{display:flex;align-items:center;gap:10px;padding:20px 20px 4px}
+@media(min-width:860px){#topbar{display:none}}
+#views{flex:1;min-height:0;overflow:hidden;padding-bottom:74px}
+@media(min-width:860px){#views{padding-bottom:0}}
+.view{height:100%;overflow-y:auto;padding:24px 20px}
+@media(min-width:860px){.view{padding:32px}}
+.view[hidden]{display:none}
+.wrap{max-width:1040px}
+
+/* bento */
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media(min-width:860px){.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid-5{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.box{position:relative;border-radius:28px;background:var(--surface);padding:24px;overflow:hidden;
+  animation:bentoIn .62s cubic-bezier(.16,1,.3,1) both}
+@media(min-width:860px){.box{padding:28px}}
+@keyframes bentoIn{from{opacity:0;transform:translateY(26px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+.span2{grid-column:span 2}
+@media(min-width:860px){.md-span2{grid-column:span 2}.md-span3{grid-column:span 3}.md-row2{grid-row:span 2}}
+.box.act{cursor:pointer;text-align:left;transition:background .3s ease}
+.box.act:hover{background:var(--surface-hover)}
+
+.kicker{font-size:8.5px;text-transform:uppercase;letter-spacing:.28em;color:var(--faint)}
+.hero-h{font-size:42px;font-weight:800;letter-spacing:-.04em;line-height:.92;margin:20px 0 0}
+@media(min-width:860px){.hero-h{font-size:62px}}
+.hero-h span{color:var(--faint)}
+.lede{font-size:13.5px;color:var(--lo);margin-top:24px;line-height:1.6;max-width:300px}
+.big{font-size:34px;font-weight:700;line-height:.9;margin-top:12px;letter-spacing:-.03em}
+@media(min-width:860px){.big{font-size:52px}}
+.mid-num{font-size:26px;font-weight:700;line-height:1;margin-top:12px;color:var(--mid)}
+@media(min-width:860px){.mid-num{font-size:32px}}
+
+.cta{position:relative;display:inline-flex;align-items:center;gap:10px;padding:14px 24px;border-radius:999px;
+  font-weight:800;font-size:13px;color:#000;letter-spacing:.02em;margin-top:32px;transition:transform .15s}
+.cta:active{transform:scale(.95)}
+.cta::before{content:"";position:absolute;inset:0;border-radius:999px;background:var(--accent);filter:blur(22px);opacity:.55}
+.cta::after{content:"";position:absolute;inset:0;border-radius:999px;background:var(--accent)}
+.cta>*{position:relative;z-index:1}
+.glowdot{position:absolute;border-radius:50%;pointer-events:none;background:var(--accent)}
+
+/* fields */
+.field{background:transparent;border:0;outline:0;border-radius:12px;padding:8px 10px;color:var(--text);
+  font-family:inherit;transition:background .2s ease,box-shadow .2s ease;width:100%}
+.field.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.field:hover{background:var(--field-hover)}
+.field:focus{background:var(--field-focus);box-shadow:0 0 0 1px var(--accent-text)}
+.field::-webkit-outer-spin-button,.field::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.field[type=number]{-moz-appearance:textfield}
+.field::placeholder{color:var(--faint)}
+
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;width:100%}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:99px;background:var(--track)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;margin-top:-6.5px;width:16px;height:16px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px rgba(223,255,0,.8)}
+input[type=range]::-moz-range-track{height:3px;border-radius:99px;background:var(--track)}
+input[type=range]::-moz-range-thumb{border:0;width:16px;height:16px;border-radius:50%;background:var(--accent)}
+
+.chipbtn{display:flex;align-items:center;gap:8px;border-radius:16px;background:var(--chip);padding:10px 16px;font-size:12px;font-weight:600;color:var(--mid);transition:opacity .2s}
+.chipbtn:hover{opacity:.7}
+
+/* rows */
+.row{position:relative;border-radius:20px;overflow:hidden;transition:background .3s ease}
+.row:hover{background:var(--surface-hover)}
+.bar{position:absolute;inset:0 auto 0 0;pointer-events:none;transform-origin:left;
+  transition:width .5s cubic-bezier(.16,1,.3,1);animation:barGrow .55s cubic-bezier(.16,1,.3,1) both}
+@keyframes barGrow{from{transform:scaleX(.4);opacity:0}to{transform:scaleX(1);opacity:1}}
+.row-in{position:relative;padding:12px}
+.row-top{display:flex;align-items:center;gap:12px}
+.row-cost{font-size:16px;font-weight:700;text-align:right}
+.row-share{font-size:8px;color:var(--faint);letter-spacing:.08em;margin-top:2px;text-align:right}
+.del{flex-shrink:0;display:grid;place-items:center;width:28px;height:28px;border-radius:12px;color:transparent;transition:color .2s}
+.row:hover .del{color:var(--lo)}
+.del:hover{color:#f87171 !important}
+.subgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:6px;padding-left:4px}
+.sublabel{display:block;font-size:7.5px;text-transform:uppercase;letter-spacing:.18em;color:var(--faint);margin:0 0 2px 8px}
+
+.price-hero{font-size:46px;font-weight:700;line-height:.86;margin-top:16px;letter-spacing:-.04em;position:relative}
+@media(min-width:860px){.price-hero{font-size:62px}}
+[data-theme="light"] .price-hero,[data-theme="light"] #dashPrice{text-shadow:none !important}
+[data-theme="light"] .navbtn.on svg,[data-theme="light"] .mobbtn.on svg{filter:none}
+.bloom{position:absolute;bottom:-96px;right:-64px;width:256px;height:256px;border-radius:50%;pointer-events:none;
+  background:var(--accent);opacity:.14;animation:bloom 1.3s ease-out forwards}
+[data-theme="light"] .bloom{opacity:.22}
+@keyframes bloom{0%{opacity:1;filter:blur(22px)}100%{opacity:.4;filter:blur(34px)}}
+.meter{position:relative;height:4px;border-radius:99px;margin-top:10px;overflow:hidden;background:var(--track)}
+.meter-fill{position:absolute;inset:0 auto 0 0;border-radius:99px;transition:all .5s ease}
+
+/* mobile nav */
+#mobnav{position:fixed;bottom:14px;left:14px;right:14px;z-index:40;display:flex;padding:6px;border-radius:24px;
+  background:var(--surface);box-shadow:0 28px 70px -26px rgba(0,0,0,.6)}
+@media(min-width:860px){#mobnav{display:none}}
+.mobbtn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  padding:8px 0;border-radius:18px;min-height:54px;color:var(--lo);transition:all .3s}
+.mobbtn.on{color:var(--accent-text);background:rgba(223,255,0,.07)}
+[data-theme="light"] .mobbtn.on{background:rgba(95,107,0,.08)}
+.mobbtn span{font-size:7.5px;text-transform:uppercase;letter-spacing:.14em;font-family:'JetBrains Mono',monospace}
+
+/* ── SCANNER: strict single-state rendering ── */
+#scanview{padding:14px;display:flex;flex-direction:column;gap:14px;height:100%}
+@media(min-width:860px){#scanview{flex-direction:row}}
+#feedbox{position:relative;flex:1;min-width:0;min-height:340px;border-radius:28px;overflow:hidden;background:#0a0a0a;
+  box-shadow:0 40px 90px -50px rgba(0,0,0,1)}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0a0a0a}
+#video.mirror{transform:scaleX(-1)}
+
+/* every overlay is off unless its state says otherwise — no inline display anywhere */
+.scan-layer{position:absolute;inset:0;display:none;place-items:center;padding:32px;text-align:center;z-index:5}
+.scan-brackets{position:absolute;inset:0;display:none;pointer-events:none;z-index:4}
+.scan-shutter{position:absolute;bottom:28px;left:0;right:0;display:none;flex-direction:column;align-items:center;gap:12px;z-index:6}
+
+#v-scan[data-scan="idle"]    .scan-layer.is-idle{display:grid}
+#v-scan[data-scan="blocked"] .scan-layer.is-blocked{display:grid}
+#v-scan[data-scan="live"]    .scan-brackets{display:block}
+#v-scan[data-scan="live"]    .scan-shutter{display:flex}
+#v-scan[data-scan="busy"]    .scan-layer.is-busy{display:grid}
+
+/* only the idle/blocked screens dim the feed; live is untouched */
+#v-scan[data-scan="idle"]    #feedbox::after,
+#v-scan[data-scan="blocked"] #feedbox::after{
+  content:"";position:absolute;inset:0;background:rgba(0,0,0,.62);z-index:3}
+.scan-layer.is-busy{background:rgba(0,0,0,.5)}
+
+.corner{position:absolute;width:32px;height:32px;border-color:var(--accent);opacity:.9}
+.reticle{position:relative;width:168px;height:168px;margin:0 auto 28px;animation:reticle 1.8s ease-in-out infinite}
+@keyframes reticle{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.025)}}
+.reticle i{position:absolute;width:36px;height:36px;border-color:var(--accent);filter:drop-shadow(0 0 10px rgba(223,255,0,.9))}
+.samplelink{display:inline-block;margin-top:16px;font-size:12px;color:#a1a1aa;background:none;padding:6px 4px;
+  text-decoration:underline;text-underline-offset:3px;transition:color .2s}
+.samplelink:hover{color:#fff}
+#laser{position:absolute;left:0;right:0;height:2px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  box-shadow:0 0 32px var(--accent),0 0 60px rgba(223,255,0,.5);animation:laser 1.6s cubic-bezier(.4,0,.6,1) infinite}
+@keyframes laser{0%{top:-2%;opacity:0}6%{opacity:1}94%{opacity:1}100%{top:102%;opacity:0}}
+.busy-pill{display:flex;align-items:center;gap:12px;padding:14px 26px;border-radius:999px;background:rgba(0,0,0,.78);
+  color:var(--accent);font-size:11px;letter-spacing:.24em}
+#scanSide{display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:46%}
+@media(min-width:860px){#scanSide{width:34%;flex-shrink:0;max-height:none}}
+#scanBanner{display:none;gap:12px;align-items:flex-start;border-radius:20px;padding:16px 18px;
+  background:rgba(239,68,68,.10);color:#fca5a5;font-size:12.5px;line-height:1.6}
+#scanBanner.show{display:flex}
+#scanBanner .mono{color:#fca5a5;opacity:.8;font-size:10.5px;word-break:break-word}
+
+/* ── SPLASH GATE ── */
+#splash{position:fixed;inset:0;z-index:9999;background:#0B0E14;display:none;
+  align-items:center;justify-content:center;padding:32px 24px;overflow-y:auto}
+#splash.show{display:flex}
+body.gated{overflow:hidden}
+body.gated #rail,body.gated #topbar,body.gated #mobnav{display:none !important}
+.splash-inner{width:100%;max-width:560px;text-align:center;
+  animation:bentoIn .7s cubic-bezier(.16,1,.3,1) both}
+
+.statusbar{display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;padding-bottom:52px}
+.status{display:inline-flex;align-items:center;gap:8px;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.2em;color:var(--lo)}
+.status .pip{width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;
+  animation:livePulse 2.6s ease-in-out infinite}
+.status.verified .pip{background:var(--accent);animation:none}
+
+.home-title{font-size:clamp(66px,17vw,124px);font-weight:800;letter-spacing:-.055em;line-height:.84;margin:0}
+.home-sub{font-size:clamp(15px,2.8vw,19px);font-weight:600;letter-spacing:-.01em;color:var(--mid);margin:24px 0 0}
+.home-desc{font-size:14.5px;line-height:1.65;color:var(--lo);margin:18px auto 0;max-width:400px}
+
+.home-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:46px}
+.home-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:17px 30px;
+  border-radius:14px;font-size:13.5px;font-weight:700;transition:transform .15s ease,background .2s ease,border-color .2s ease}
+.home-btn:active{transform:scale(.98)}
+.home-btn.primary{background:var(--accent);color:#0B0E14}
+.home-btn.primary:hover{background:#eaff4d}
+.home-btn.secondary{background:transparent;color:#fafafa;border:1px solid #2a3244}
+.home-btn.secondary:hover{border-color:#5b6479}
+
+.flowline{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:54px;
+  font-size:11px;letter-spacing:.06em;color:var(--lo)}
+.flowline .n{color:var(--faint);margin-right:6px}
+.flowline .arrow{color:#2a3244}
+
+.home-foot{margin-top:54px;padding-top:26px;border-top:1px solid #1b2130}
+.home-link{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--lo);
+  text-decoration:none;transition:color .2s}
+.home-link:hover{color:var(--accent)}
+
+.brandlink{cursor:pointer}
+
+/* ── SETTINGS ── */
+.sec{border:1px solid #1f2534;border-radius:18px;padding:22px;margin-bottom:14px;background:#10141d}
+.sec-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.sec-t{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mid)}
+.sec-n{font-size:11.5px;color:var(--lo);line-height:1.55;margin:4px 0 0}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-top:1px solid #1a1f2c}
+.setrow:first-of-type{border-top:0}
+.setrow-l{min-width:0;flex:1}
+.setrow-t{font-size:13.5px;font-weight:600}
+.setrow-n{font-size:11px;color:var(--lo);margin-top:4px;line-height:1.5}
+.setrow-v{flex-shrink:0;text-align:right}
+
+.seg{display:inline-flex;border:1px solid #232a3a;border-radius:12px;overflow:hidden}
+.seg button{padding:9px 14px;font-size:11px;font-weight:600;color:var(--lo);background:transparent;transition:all .2s}
+.seg button.on{background:var(--accent);color:#0B0E14}
+.seg button:not(.on):hover{color:var(--text)}
+
+.sw{position:relative;width:46px;height:26px;border-radius:999px;background:#232a3a;transition:background .25s;flex-shrink:0}
+.sw.on{background:var(--accent)}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;
+  background:#fff;transition:transform .25s}
+.sw.on::after{transform:translateX(20px);background:#0B0E14}
+
+.hashbox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;
+  padding:14px 16px;border:1px solid #232a3a;border-radius:14px;background:#0B0E14}
+.hashbox code{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);word-break:break-all}
+.minibtn{padding:8px 13px;border-radius:10px;border:1px solid #2a3244;font-size:11px;font-weight:600;
+  color:var(--mid);transition:all .2s;white-space:nowrap}
+.minibtn:hover{border-color:var(--accent);color:var(--accent)}
+.livepill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:999px;
+  font-size:10px;font-weight:600;letter-spacing:.1em;color:#4ade80;background:rgba(74,222,128,.1);
+  border:1px solid rgba(74,222,128,.22)}
+.dangerlink{background:none;font-size:12px;color:var(--lo);text-decoration:underline;
+  text-underline-offset:3px;padding:8px 2px;transition:color .2s}
+.dangerlink:hover{color:#fca5a5}
+#rawJson{border:1px solid #232a3a;border-radius:16px;padding:16px;background:#0B0E14;
+  font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.6;color:var(--lo);
+  white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto}
+
+/* data provenance badge */
+.prov{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+  font-size:8.5px;text-transform:uppercase;letter-spacing:.18em;white-space:nowrap}
+.prov[data-src="live"]{color:#4ade80;background:rgba(74,222,128,.12)}
+.prov[data-src="sample"]{color:#fbbf24;background:rgba(251,191,36,.12)}
+.prov[data-src="manual"]{color:var(--faint);background:var(--chip)}
+.prov .pip{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.prov[data-src="live"] .pip{animation:livePulse 2.2s ease-in-out infinite}
+
+/* receipt modal */
+#modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:16px;
+  background:rgba(0,0,0,.72);backdrop-filter:blur(14px)}
+[data-theme="light"] #modal{background:rgba(255,255,255,.7)}
+#modal.open{display:flex}
+#audit-receipt{position:relative;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;border-radius:28px;
+  padding:28px;background:var(--surface);
+  box-shadow:0 50px 110px -40px rgba(0,0,0,1);animation:modalIn .42s cubic-bezier(.16,1,.3,1) both}
+[data-theme="light"] #audit-receipt{background:#fff;box-shadow:0 40px 90px -40px rgba(0,0,0,.4)}
+@media(min-width:520px){#audit-receipt{padding:36px}}
+@keyframes modalIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.rule{border-top:1px dashed var(--rule);margin:20px 0}
+.rrow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:6px 0}
+.rrow .l{font-size:11px}
+.rrow .v{font-size:12px}
+.rrow.muted .l{color:var(--lo)}
+.rrow.bold .l,.rrow.bold .v{font-weight:700}
+
+.closebtn{position:absolute;top:20px;right:20px;padding:8px;border-radius:12px;color:var(--lo)}
+.closebtn:hover{background:var(--surface-hover)}
+
+#toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);z-index:50;display:none;align-items:center;gap:12px;
+  border-radius:16px;background:var(--surface);padding:12px 12px 12px 16px;
+  box-shadow:0 26px 70px -22px rgba(0,0,0,1);animation:toastIn .34s cubic-bezier(.16,1,.3,1) both}
+@media(min-width:860px){#toast{bottom:32px}}
+#toast.show{display:flex}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+
+.sync-pill{display:inline-flex;align-items:center;gap:6px;font-size:8.5px;text-transform:uppercase;
+  letter-spacing:.18em;color:var(--faint)}
+.syncbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}
+#traceBtn{font-size:8.5px;text-transform:uppercase;letter-spacing:.16em;color:var(--accent-text);
+  padding:4px 10px;border-radius:999px;background:var(--chip);transition:opacity .2s}
+#traceBtn:hover{opacity:.65}
+#tracePanel{margin-top:12px;border-radius:18px;background:var(--surface);padding:16px 18px;
+  animation:bentoIn .4s cubic-bezier(.16,1,.3,1) both}
+#tracePanel[hidden]{display:none}
+.tstep{display:flex;gap:10px;align-items:flex-start;padding:7px 0}
+.tstep .idx{font-size:9px;color:var(--accent-text);flex-shrink:0;letter-spacing:.06em;padding-top:1px}
+.tstep .body{min-width:0}
+.tstep .what{font-size:11.5px;line-height:1.45}
+.tstep .meta{font-size:9px;color:var(--faint);margin-top:3px;letter-spacing:.04em}
+.txlink{color:inherit;text-decoration:none;border-bottom:1px solid var(--track);transition:border-color .2s,color .2s}
+.txlink:hover{color:var(--accent-text);border-bottom-color:var(--accent-text)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none !important}}
+
+/* ── PRINT ── */
+@media print{
+  @page{margin:14mm}
+  html,body{background:#fff !important;overflow:visible !important;height:auto !important}
+  body *{visibility:hidden !important}
+  #audit-receipt,#audit-receipt *{visibility:visible !important}
+  #modal{position:static !important;display:block !important;background:none !important;backdrop-filter:none !important;padding:0 !important}
+  #audit-receipt{position:absolute !important;left:0 !important;top:0 !important;width:100% !important;max-width:none !important;
+    max-height:none !important;overflow:visible !important;background:#fff !important;color:#000 !important;
+    box-shadow:none !important;backdrop-filter:none !important;border-radius:0 !important;padding:0 !important;animation:none !important}
+  #audit-receipt *{color:#000 !important;background:transparent !important;box-shadow:none !important;text-shadow:none !important}
+  #audit-receipt .rule{border-top:1px dashed #000 !important}
+  #audit-receipt .muted .l,#audit-receipt .pmuted{color:#555 !important}
+  .no-print{display:none !important}
+}
+</style>
+</head>
+<body>
+<div id="void"></div>
+
+<!-- SPLASH GATE -->
+<div id="splash">
+  <div class="splash-inner">
+    <div class="statusbar mono">
+      <span class="status"><span class="pip"></span>Base Network</span>
+      <span class="status verified"><span class="pip"></span>OKLink Verified</span>
+    </div>
+
+    <h1 class="home-title">MISE</h1>
+    <p class="home-sub">Culinary Costing &amp; Margin Engine</p>
+    <p class="home-desc">
+      Turn live kitchen prep feeds into itemized costing sheets and verified on-chain records.
+    </p>
+
+    <div class="home-actions">
+      <button class="home-btn primary" id="splashScan">📸&nbsp; Scan Prep Bench</button>
+      <button class="home-btn secondary" id="splashDemo">View Demo Kitchen</button>
+    </div>
+
+    <div class="flowline mono">
+      <span><span class="n">1.</span>Snap prep</span>
+      <span class="arrow">→</span>
+      <span><span class="n">2.</span>Calculate margins</span>
+      <span class="arrow">→</span>
+      <span><span class="n">3.</span>Verify on-chain</span>
+    </div>
+
+    <div class="home-foot">
+      <a class="home-link mono" id="homeExplorer" target="_blank" rel="noopener noreferrer">
+        View contract on OKLink ↗
+      </a>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <!-- RAIL -->
+  <aside id="rail" class="no-print">
+    <div class="brand brandlink">
+      <div class="brand-mark">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" y1="17" x2="18" y2="17"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">MISE</div>
+        <div class="brand-sub mono">Agentic costing</div>
+      </div>
+    </div>
+
+    <div class="identity">
+      <span class="dot"></span>
+      <div style="min-width:0">
+        <div class="identity-l mono">Onchain OS</div>
+        <div class="identity-v mono" id="agentShort"></div>
+      </div>
+    </div>
+
+    <nav id="navlist"></nav>
+
+    <button id="themeBtn"><span id="themeIcon"></span><span id="themeLabel">Light</span></button>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="topbar" class="no-print">
+      <div class="brand-mark" style="width:28px;height:28px;border-radius:10px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" y1="17" x2="18" y2="17"/></svg>
+      </div>
+      <span class="brand-name brandlink">MISE</span>
+      <span class="mono" style="display:flex;align-items:center;gap:6px;font-size:8px;color:var(--faint);margin-left:6px">
+        <span class="dot"></span><span id="agentShort2"></span>
+      </span>
+      <button id="themeBtn2" style="margin-left:auto;padding:8px;border-radius:12px;background:var(--chip)"></button>
+    </div>
+
+    <div id="views">
+      <!-- SCAN -->
+      <section class="view" id="v-scan" hidden style="padding:0" data-scan="idle">
+        <div id="scanview">
+          <div id="feedbox">
+            <video id="video" autoplay playsinline webkit-playsinline muted disablepictureinpicture></video>
+            <canvas id="canvas" hidden></canvas>
+
+            <!-- STATE A · camera inactive -->
+            <div class="scan-layer is-idle">
+              <div>
+                <div class="reticle">
+                  <i style="top:0;left:0;border-top:2px solid;border-left:2px solid"></i>
+                  <i style="top:0;right:0;border-top:2px solid;border-right:2px solid"></i>
+                  <i style="bottom:0;left:0;border-bottom:2px solid;border-left:2px solid"></i>
+                  <i style="bottom:0;right:0;border-bottom:2px solid;border-right:2px solid"></i>
+                </div>
+                <button class="cta" id="enableCam"><span>ENABLE CAMERA</span></button>
+                <div><button class="samplelink" id="sampleIdle">Use sample data</button></div>
+              </div>
+            </div>
+
+            <!-- STATE A · camera blocked -->
+            <div class="scan-layer is-blocked">
+              <div>
+                <div style="font-weight:700;font-size:15px;color:#fff" id="camErrTitle"></div>
+                <p class="mono" style="font-size:11px;color:#a1a1aa;margin:12px auto 0;line-height:1.6;max-width:300px" id="camErrMsg"></p>
+                <div style="margin-top:22px"><button class="cta" id="retryCam"><span>RETRY CAMERA</span></button></div>
+                <div><button class="samplelink" id="sampleBlocked">Use sample data</button></div>
+              </div>
+            </div>
+
+            <!-- STATE B · live -->
+            <div class="scan-brackets">
+              <div class="corner" style="top:20px;left:20px;border-top:2px solid;border-left:2px solid"></div>
+              <div class="corner" style="top:20px;right:20px;border-top:2px solid;border-right:2px solid"></div>
+              <div class="corner" style="bottom:20px;left:20px;border-bottom:2px solid;border-left:2px solid"></div>
+              <div class="corner" style="bottom:20px;right:20px;border-bottom:2px solid;border-right:2px solid"></div>
+            </div>
+            <div class="scan-shutter">
+              <button class="cta" id="captureBtn"><span>CAPTURE &amp; ANALYZE</span></button>
+            </div>
+
+            <!-- STATE C · analyzing -->
+            <div class="scan-layer is-busy">
+              <div id="laser"></div>
+              <div class="busy-pill mono">VISION ANALYZING INGREDIENTS…</div>
+            </div>
+          </div>
+
+          <aside id="scanSide">
+            <div id="scanBanner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <div>
+                <div style="font-weight:700;margin-bottom:5px">Scan failed</div>
+                <div class="mono" id="scanBannerMsg"></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- COSTING -->
+      <section class="view" id="v-calculator" hidden>
+        <div class="wrap grid grid-5">
+          <div class="box span2 md-span3 md-row2" style="animation-delay:0ms">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+              <div style="min-width:0">
+                <input id="dishName" class="field" value="Jollof Rice" placeholder="Recipe name"
+                  style="font-size:22px;font-weight:800;letter-spacing:-.03em;margin-left:-8px;max-width:280px" />
+                <p class="mono" style="font-size:9.5px;color:var(--faint);margin:8px 0 0 2px">(buy price ÷ buy qty) × qty used</p>
+                <div class="syncbar">
+                  <div class="sync-pill mono" id="syncPill"></div>
+                  <button id="traceBtn" class="mono">[ View Agent Trace ]</button>
+                </div>
+                <div id="tracePanel" hidden></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span class="prov mono" id="provBadge" data-src="manual"><span class="pip"></span><span id="provText">manual entry</span></span>
+                <button class="chipbtn" data-go="scan">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                  Scan
+                </button>
+                <label class="chipbtn" style="cursor:default">
+                  <span class="mono" style="font-size:8.5px;text-transform:uppercase;letter-spacing:.2em;color:var(--faint)">Yield</span>
+                  <input id="portions" type="number" class="field mono" value="20" style="width:40px;text-align:right;font-weight:700;font-size:12.5px;padding:0" />
+                </label>
+              </div>
+            </div>
+
+            <div id="rowsWrap" style="margin-top:28px;display:flex;flex-direction:column;gap:4px"></div>
+
+            <div id="catalogWrap" style="margin-top:18px"></div>
+
+            <div style="display:flex;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap">
+              <button id="addRow" style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;padding:12px 16px;border-radius:16px;color:var(--accent-text)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add ingredient
+              </button>
+              <button id="openReceipt" class="chipbtn" style="margin-left:auto;font-weight:700;padding:12px 20px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>
+                Generate receipt
+              </button>
+            </div>
+          </div>
+
+          <div class="box span2" style="animation-delay:80ms">
+            <div class="bloom" id="priceBloom"></div>
+            <div class="kicker mono" style="position:relative;letter-spacing:.3em">Suggested menu price</div>
+            <div class="price-hero mono" id="menuPrice" style="text-shadow:0 0 56px rgba(223,255,0,.4)">₦0</div>
+            <div style="position:relative;margin-top:28px">
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:9px;text-transform:uppercase;letter-spacing:.18em" class="mono">
+                <span id="statusLabel"></span><span id="fcPct"></span>
+              </div>
+              <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+            </div>
+          </div>
+
+          <div class="box" style="animation-delay:150ms;display:flex;flex-direction:column;justify-content:center">
+            <div class="kicker mono" style="letter-spacing:.24em;font-size:8px">Waste buffer</div>
+            <div class="mono" id="wasteVal" style="font-size:30px;font-weight:700;line-height:1;margin-top:10px;color:var(--accent-text)">7%</div>
+            <input id="waste" type="range" min="0" max="25" value="7" style="margin-top:16px" aria-label="Waste buffer" />
+            <div class="mono" id="wasteNote" style="font-size:8.5px;color:var(--faint);margin-top:12px;line-height:1.5"></div>
+          </div>
+
+          <div class="box" style="animation-delay:220ms;display:flex;flex-direction:column;justify-content:center">
+            <div class="kicker mono" style="letter-spacing:.24em;font-size:8px">Target margin</div>
+            <div class="mono" id="marginVal" style="font-size:30px;font-weight:700;line-height:1;margin-top:10px;color:var(--accent-text)">66%</div>
+            <input id="margin" type="range" min="0" max="90" value="66" style="margin-top:16px" aria-label="Target margin" />
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
+              <div>
+                <div class="kicker mono" style="font-size:7.5px;letter-spacing:.24em">Total</div>
+                <div class="mono" id="sideTotal" style="font-size:17px;font-weight:700;margin-top:4px;color:var(--mid)">₦0</div>
+              </div>
+              <div>
+                <div class="kicker mono" style="font-size:7.5px;letter-spacing:.24em">Per portion</div>
+                <div class="mono" id="sidePer" style="font-size:17px;font-weight:700;margin-top:4px;color:var(--lo)">₦0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="v-settings" hidden>
+        <div class="wrap" style="max-width:720px">
+          <h1 style="font-size:26px;font-weight:800;letter-spacing:-.03em;margin:0 0 24px">Settings</h1>
+
+          <!-- on-chain -->
+          <div class="sec">
+            <div class="sec-h">
+              <div class="sec-t">On-chain ASP status</div>
+              <span class="livepill">OKX.AI Agent · Base Active<span class="dot" style="width:6px;height:6px"></span></span>
+            </div>
+            <p class="sec-n">Mise is registered as an Agent Service Provider. The costing endpoint is callable by other agents on the network.</p>
+            <div class="hashbox">
+              <code id="hashShort"></code>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="minibtn" id="copyHash">Copy</button>
+                <a class="minibtn" id="openOklink" target="_blank" rel="noopener noreferrer">Open in OKLink ↗</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- chef panel -->
+          <div class="sec">
+            <div class="sec-h"><div class="sec-t">Kitchen economics</div></div>
+            <div class="setrow">
+              <div class="setrow-l">
+                <div class="setrow-t">Target food cost</div>
+                <div class="setrow-n">Auto-calculates suggested menu selling prices.</div>
+              </div>
+              <div class="setrow-v">
+                <div class="mono" id="fcVal" style="font-size:22px;font-weight:700;color:var(--accent-text)">30%</div>
+                <input type="range" id="fcRange" min="20" max="45" value="30" style="width:132px;margin-top:8px" aria-label="Target food cost">
+              </div>
+            </div>
+            <div class="setrow">
+              <div class="setrow-l">
+                <div class="setrow-t">Global yield / trim loss buffer</div>
+                <div class="setrow-n">Adjusts raw scan weights for kitchen waste.</div>
+              </div>
+              <div class="setrow-v">
+                <div class="mono" id="trimVal" style="font-size:22px;font-weight:700;color:var(--accent-text)">+8%</div>
+                <input type="range" id="trimRange" min="0" max="25" value="8" style="width:132px;margin-top:8px" aria-label="Trim loss buffer">
+              </div>
+            </div>
+            <div class="setrow">
+              <div class="setrow-l">
+                <div class="setrow-t">Currency &amp; tax</div>
+                <div class="setrow-n">Applied to every costing and audit receipt.</div>
+              </div>
+              <div class="setrow-v mono" style="font-size:12.5px;color:var(--mid);line-height:1.7">
+                Nigerian Naira (₦)<br>7.5% VAT
+              </div>
+            </div>
+          </div>
+
+          <!-- vision panel -->
+          <div class="sec">
+            <div class="sec-h"><div class="sec-t">AI vision parameters</div></div>
+            <div class="setrow">
+              <div class="setrow-l">
+                <div class="setrow-t">Vision precision</div>
+                <div class="setrow-n" id="precisionNote">Auto-infer adds identified items straight to the sheet.</div>
+              </div>
+              <div class="setrow-v seg" id="segPrecision">
+                <button data-v="strict">Strict</button>
+                <button data-v="auto" class="on">Auto-infer</button>
+              </div>
+            </div>
+            <div class="setrow">
+              <div class="setrow-l">
+                <div class="setrow-t">Kitchen bias</div>
+                <div class="setrow-n" id="biasNote">Hot line estimates in bulk market units.</div>
+              </div>
+              <div class="setrow-v seg" id="segBias">
+                <button data-v="pastry">Pastry</button>
+                <button data-v="hotline" class="on">Hot line</button>
+              </div>
+            </div>
+            <div class="setrow">
+              <div class="setrow-l">
+                <div class="setrow-t">Raw JSON debugger</div>
+                <div class="setrow-n">Shows the unedited model response on the Scan tab.</div>
+              </div>
+              <div class="setrow-v"><button class="sw" id="swDebug" role="switch" aria-checked="false" aria-label="Raw JSON debugger"></button></div>
+            </div>
+          </div>
+
+          <!-- session -->
+          <div class="sec">
+            <div class="sec-h"><div class="sec-t">Session</div></div>
+            <button class="home-btn primary" id="relaunch" style="width:100%;margin-top:8px">🔄&nbsp; Relaunch launch screen</button>
+            <div style="text-align:center;margin-top:10px">
+              <button class="dangerlink" id="resetSession">Reset batch session data</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <nav id="mobnav" class="no-print"></nav>
+</div>
+
+<!-- RECEIPT MODAL -->
+<div id="modal">
+  <div id="audit-receipt">
+    <button class="closebtn no-print" id="closeModal">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div id="receiptBody"></div>
+    <div class="no-print" style="display:flex;gap:10px;margin-top:32px">
+      <button class="cta" id="printBtn" style="flex:1;justify-content:center;margin-top:0;border-radius:16px">
+        <span>EXPORT / PRINT</span>
+      </button>
+      <button class="chipbtn" id="closeModal2" style="padding:14px 24px">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="no-print"><span id="toastMsg"></span></div>
+
+<script>
+/* ══════════ CONFIG ══════════ */
+const AGENT_TX = "0xc2786fb119e5c05d46eb47e7e4e5a9d4b418fbc97f2f7ffe39897ed2e9eafb0d";
+const CHAIN_LABEL = "Base · OKLink (OKX)";
+const EXPLORER = "https://www.oklink.com/base/tx/0xc2786fb119e5c05d46eb47e7e4e5a9d4b418fbc97f2f7ffe39897ed2e9eafb0d";
+const txLink = (label) =>
+  `<a class="txlink" href="${EXPLORER}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+const API = "/api/calculate";
+const SCAN = "/api/scan";
+
+/* ══════════ STATE ══════════ */
+/* Fallback benchmark — used only when the live endpoint can't be reached,
+   so the sheet is never empty. Mirrors the library in /api/calculate. */
+const LIVE_PRICES = [
+  { key:"tomatoes",  name:"Tomatoes",                buyQty:50, unit:"kg",           buyPrice:19500, defaultUse:2,    source:"Mile 12 Market" },
+  { key:"tatase",    name:"Tatase pepper",           buyQty:50, unit:"kg",           buyPrice:19500, defaultUse:1.5,  source:"Mile 12 Market" },
+  { key:"rodo",      name:"Rodo pepper",             buyQty:1,  unit:"big bowl",     buyPrice:21000, defaultUse:0.15, source:"Mile 12 Market" },
+  { key:"shombo",    name:"Shombo pepper",           buyQty:1,  unit:"big bowl",     buyPrice:7000,  defaultUse:0.2,  source:"Mile 12 Market" },
+  { key:"onions",    name:"Onions, red",             buyQty:1,  unit:"big bowl",     buyPrice:9500,  defaultUse:0.25, source:"Mile 12 Market" },
+  { key:"crayfish",  name:"Crayfish, medium",        buyQty:1,  unit:"paint bucket", buyPrice:18700, defaultUse:0.1,  source:"Mile 12 Market" },
+  { key:"rice",      name:"Rice",                    buyQty:1,  unit:"derica",       buyPrice:1500,  defaultUse:5,    source:"Naija Food" },
+  { key:"veg-oil",   name:"Vegetable oil",           buyQty:25, unit:"L",            buyPrice:28875, defaultUse:1.5,  source:"Naija Food" },
+  { key:"chicken",   name:"Chicken wings",           buyQty:1,  unit:"kg",           buyPrice:2790,  defaultUse:2,    source:"Naija Food" },
+  { key:"beef",      name:"Beef, cut up",            buyQty:1,  unit:"kg",           buyPrice:7900,  defaultUse:1.5,  source:"Naija Food" },
+  { key:"seasoning", name:"Seasoning cubes & spice", buyQty:1,  unit:"lump sum",     buyPrice:1500,  defaultUse:1,    source:"Jumia Groceries" },
+  { key:"pack",      name:"Takeaway pack",           buyQty:50, unit:"pack",         buyPrice:6000,  defaultUse:20,   source:"Jumia Groceries" },
+  { key:"gas",       name:"Cooking gas",             buyQty:1,  unit:"kg",           buyPrice:1600,  defaultUse:1,    source:"Jumia Groceries" },
+];
+const LOCAL_STARTER = ["rice","tomatoes","onions"];
+
+/* Sample frame — lets a judge on a desktop with no camera see the scan flow.
+   The drawn frame is sent through the real /api/scan pipeline; if vision is
+   unavailable, these stand in and are labelled as sample data on screen. */
+const SAMPLE_ITEMS = [
+  { name:"Tomatoes",      buyQty:50, unit:"kg",       buyPrice:19500, useQty:2,   confidence:94 },
+  { name:"Rodo pepper",   buyQty:1,  unit:"big bowl", buyPrice:21000, useQty:0.15, confidence:88 },
+  { name:"Onions, red",   buyQty:1,  unit:"big bowl", buyPrice:9500,  useQty:0.25, confidence:91 },
+];
+
+let uid = 100;
+let rows = [];
+let catalog = [];
+let catalogState = "loading";
+let visionMode  = "auto";       // auto | strict
+let kitchenBias = "hotline";    // hotline | pastry
+let debugJson   = false;
+let lastRaw     = null;  // loading | live | local
+let tab = "dashboard";
+let theme = "dark";
+
+const NAV = [
+  { key:"scan", label:"Scan", icon:'<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/>' },
+  { key:"calculator", label:"Costing", icon:'<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="11" x2="8" y2="11"/><line x1="12" y1="11" x2="12" y2="11"/><line x1="16" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="12" y1="16" x2="12" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/>' },
+  { key:"settings", label:"Settings", icon:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10.6 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 16.11 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 20.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>' },
+];
+
+/* ══════════ HELPERS ══════════ */
+const $ = (s) => document.querySelector(s);
+const naira = (n) => "₦" + (isFinite(n) ? Math.round(n) : 0).toLocaleString("en-NG");
+const svg = (path, w) => `<svg width="${w||16}" height="${w||16}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+const stampNow = () => new Date().toLocaleString("en-NG", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+
+function costOf(r){
+  const bq = parseFloat(r.buyQty), bp = parseFloat(r.buyPrice), uq = parseFloat(r.useQty);
+  if(!isFinite(bq) || !isFinite(bp) || !isFinite(uq) || bq <= 0) return 0;
+  return (bp / bq) * uq;
+}
+
+function readInputs(){
+  return {
+    dishName: $("#dishName").value || "Untitled",
+    portions: Math.max(parseFloat($("#portions").value) || 1, 1),
+    margin: parseInt($("#margin").value),
+    waste: parseInt($("#waste").value),
+  };
+}
+
+/* local engine — identical maths to the API, so the UI never depends on the network */
+function computeLocal(){
+  const { portions, margin, waste } = readInputs();
+  const baseCost = rows.reduce((s, r) => s + costOf(r), 0);
+  const wasteCost = baseCost * (waste / 100);
+  const totalCost = baseCost + wasteCost;
+  const perPortion = totalCost / portions;
+  const suggested = margin < 100 ? perPortion / (1 - margin / 100) : perPortion;
+  const foodCostPct = suggested > 0 ? Math.round((perPortion / suggested) * 100) : 0;
+  return { baseCost, wasteCost, totalCost, perPortion, suggested, foodCostPct };
+}
+
+/* ══════════ NAV ══════════ */
+function buildNav(){
+  $("#navlist").innerHTML = NAV.map((n,i) =>
+    `<button class="navbtn${n.key===tab?" on":""}" data-go="${n.key}" style="animation-delay:${i*45}ms">${svg(n.icon,16)}${n.label}</button>`
+  ).join("");
+  $("#mobnav").innerHTML = NAV.map((n) =>
+    `<button class="mobbtn${n.key===tab?" on":""}" data-go="${n.key}">${svg(n.icon,17)}<span>${n.label}</span></button>`
+  ).join("");
+}
+
+function go(key){
+  tab = key;
+  NAV.forEach(n => { const el = $("#v-" + n.key); if(el) el.hidden = n.key !== key; });
+  buildNav();
+  if(key === "scan") ensureCam();
+  else stopCam();
+}
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-go]");
+  if(b) go(b.dataset.go);
+});
+
+/* ══════════ THEME ══════════ */
+const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>';
+const MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>';
+function applyTheme(){
+  document.documentElement.dataset.theme = theme;
+  $("#themeIcon").innerHTML = svg(theme === "dark" ? SUN : MOON, 16);
+  $("#themeLabel").textContent = theme === "dark" ? "Light" : "Dark";
+  $("#themeBtn2").innerHTML = svg(theme === "dark" ? SUN : MOON, 16);
+}
+$("#themeBtn").onclick = $("#themeBtn2").onclick = () => { theme = theme === "dark" ? "light" : "dark"; applyTheme(); };
+
+/* ══════════ ROWS ══════════ */
+function buildRows(){
+  const wrap = $("#rowsWrap");
+  wrap.innerHTML = rows.map((r) => `
+    <div class="row" data-id="${r.id}">
+      <div class="bar" data-bar></div>
+      <div class="row-in">
+        <div class="row-top">
+          <input class="field" data-f="name" value="${(r.name||"").replace(/"/g,"&quot;")}" placeholder="Ingredient"
+            style="flex:1;min-width:0;font-size:14.5px;font-weight:600" />
+          <div style="flex-shrink:0">
+            <div class="row-cost mono" data-cost>₦0</div>
+            <div class="row-share mono" data-share>0% OF COST</div>
+          </div>
+          <button class="del" data-del>${svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',14)}</button>
+        </div>
+        <div class="subgrid">
+          <label><span class="sublabel mono">Buy qty</span><input class="field mono" type="number" data-f="buyQty" value="${r.buyQty}" style="text-align:right;font-size:12px;color:var(--lo)" /></label>
+          <label><span class="sublabel mono">Unit</span><input class="field mono" data-f="unit" value="${(r.unit||"").replace(/"/g,"&quot;")}" style="font-size:12px;color:var(--lo)" /></label>
+          <label><span class="sublabel mono">Buy ₦</span><input class="field mono" type="number" data-f="buyPrice" value="${r.buyPrice}" style="text-align:right;font-size:12px;color:var(--lo)" /></label>
+          <label><span class="sublabel mono">Used</span><input class="field mono" type="number" data-f="useQty" value="${r.useQty}" style="text-align:right;font-size:12px;color:var(--lo)" /></label>
+        </div>
+      </div>
+    </div>`).join("");
+
+  wrap.querySelectorAll(".row").forEach((el) => {
+    const id = +el.dataset.id;
+    el.querySelectorAll("[data-f]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const r = rows.find((x) => x.id === id);
+        if(r){ r[inp.dataset.f] = inp.value; recalc(); }
+      });
+    });
+    el.querySelector("[data-del]").addEventListener("click", () => {
+      rows = rows.filter((x) => x.id !== id);
+      buildRows(); recalc();
+    });
+  });
+}
+
+$("#addRow").onclick = () => {
+  rows.push({ id: uid++, name:"", buyQty:1, unit:"kg", buyPrice:0, useQty:0 });
+  buildRows(); recalc();
+};
+
+/* ══════════ RECALC ══════════ */
+let syncTimer = null;
+function recalc(){
+  const t0 = performance.now();
+  const { portions, margin, waste } = readInputs();
+  const c = computeLocal();
+  const maxCost = Math.max(...rows.map(costOf), 1);
+
+  // rows
+  document.querySelectorAll(".row").forEach((el) => {
+    const r = rows.find((x) => x.id === +el.dataset.id);
+    if(!r) return;
+    const cost = costOf(r);
+    const rel = cost / maxCost;
+    const share = c.baseCost > 0 ? cost / c.baseCost : 0;
+    el.querySelector("[data-cost]").textContent = naira(cost);
+    el.querySelector("[data-share]").textContent = Math.round(share * 100) + "% OF COST";
+    const bar = el.querySelector("[data-bar]");
+    bar.style.width = Math.max(rel * 100, 1.5) + "%";
+    const a = theme === "dark" ? (0.10 + rel * 0.10) : (0.08 + rel * 0.08);
+    bar.style.background = theme === "dark"
+      ? `linear-gradient(90deg, rgba(223,255,0,${a}), rgba(223,255,0,0))`
+      : `linear-gradient(90deg, rgba(95,107,0,${a}), rgba(95,107,0,0))`;
+  });
+
+  // costing panel
+  $("#menuPrice").textContent = naira(c.suggested);
+  $("#sideTotal").textContent = naira(c.totalCost);
+  $("#sidePer").textContent = naira(c.perPortion);
+  $("#wasteVal").textContent = waste + "%";
+  $("#marginVal").textContent = margin + "%";
+  $("#wasteNote").textContent = "+" + naira(c.wasteCost) + " on " + naira(c.baseCost);
+
+  const over = c.foodCostPct > 34, under = c.foodCostPct < 32;
+  const status = over ? "#ff6b6b" : under ? (theme === "dark" ? "#ffd23f" : "#a16207") : "var(--accent-text)";
+  $("#statusLabel").textContent = over ? "Over target" : under ? "Room to price up" : "Healthy margin";
+  $("#statusLabel").style.color = status;
+  $("#fcPct").textContent = c.foodCostPct + "% food cost";
+  $("#fcPct").style.color = status;
+  const fill = $("#meterFill");
+  fill.style.width = (Math.min(c.foodCostPct, 60) / 60 * 100) + "%";
+  fill.style.background = status;
+  fill.style.boxShadow = theme === "dark" ? `0 0 16px ${status}` : "none";
+
+  // re-fire bloom
+  const bl = $("#priceBloom");
+  bl.style.animation = "none"; void bl.offsetWidth; bl.style.animation = "";
+
+  // dashboard
+
+  trace.compute = { state: "ok", ms: Math.max(Math.round(performance.now() - t0), 1), lines: rows.length };
+  if(traceOpen) renderTrace();
+
+  // ask the live agent endpoint to confirm (debounced, non-blocking)
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(verifyWithAgent, 500);
+}
+
+function setPill(state){
+  const pill = $("#syncPill");
+  if(!pill) return;
+  if(catalogState === "local"){
+    pill.innerHTML = '<span style="width:5px;height:5px;border-radius:50%;background:var(--accent-text);display:inline-block"></span> local benchmark active';
+    return;
+  }
+  if(state === "live")    pill.innerHTML = '<span class="dot" style="width:5px;height:5px"></span> verified by agent endpoint';
+  else if(state === "syncing") pill.textContent = "· syncing with agent";
+  else                    pill.textContent = "· agent endpoint unreachable";
+}
+
+async function verifyWithAgent(){
+  const { dishName, portions, margin, waste } = readInputs();
+  setPill("syncing");
+  trace.verify = { state: "pending", ms: null, at: null };
+  if(traceOpen) renderTrace();
+  const t0 = performance.now();
+  try{
+    const res = await fetch(API, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        dishName, batchSize: portions, marginPct: margin, wastePct: waste,
+        ingredients: rows.map(r => ({
+          name: r.name, buyQty: parseFloat(r.buyQty)||0,
+          unit: r.unit, buyPrice: parseFloat(r.buyPrice)||0, useQty: parseFloat(r.useQty)||0
+        })),
+      }),
+    });
+    const data = await res.json();
+    if(!data || data.ok !== true) throw 0;
+    setPill("live");
+    trace.verify = {
+      state: "ok",
+      ms: Math.round(performance.now() - t0),
+      at: new Date().toLocaleTimeString("en-NG", { hour:"2-digit", minute:"2-digit", second:"2-digit" }),
+    };
+  }catch{
+    setPill("offline");
+    trace.verify = { state: "fail", ms: Math.round(performance.now() - t0), at: null };
+  }
+  if(traceOpen) renderTrace();
+}
+
+["#dishName","#portions","#margin","#waste"].forEach(sel =>
+  $(sel).addEventListener("input", recalc)
+);
+
+/* ══════════ TOAST ══════════ */
+let toastTimer;
+function toast(msg){
+  $("#toastMsg").textContent = msg;
+  $("#toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 3200);
+}
+
+/* ══════════ CAMERA ══════════ */
+/* one attribute drives the whole Scan view: idle | blocked | live | busy */
+let stream = null;
+let camReady = false;
+let camDenied = false;
+let camStarting = false;
+
+function setScanState(state){
+  const v = $("#v-scan");
+  if(v) v.dataset.scan = state;
+}
+function scanState(){ return $("#v-scan")?.dataset.scan || "idle"; }
+
+function showScanError(msg){
+  $("#scanBannerMsg").textContent = msg;
+  $("#scanBanner").classList.add("show");
+}
+function clearScanError(){ $("#scanBanner").classList.remove("show"); }
+
+function camBlocked(kind){
+  camReady = false;
+  const t = $("#camErrTitle"), m = $("#camErrMsg");
+  const copy = {
+    insecure: ["Camera needs a secure connection", "Browsers only allow camera access over HTTPS. Open the https:// address, or use sample data."],
+    denied:   ["Camera permission blocked", "Allow camera access from your browser's address bar, then retry."],
+    none:     ["No camera found", "This device doesn't report a camera."],
+    busy:     ["Camera already in use", "Another app or tab is holding the camera. Close it and retry."],
+    lost:     ["Camera disconnected", "The video stream ended. Reconnect and retry."],
+  }[kind] || ["Camera unavailable", "This device or browser blocked camera access."];
+  t.textContent = copy[0];
+  m.textContent = copy[1];
+  setScanState("blocked");
+}
+
+function waitForFrame(v, ms = 4000){
+  return new Promise((resolve) => {
+    if(v.videoWidth > 0) return resolve(true);
+    let done = false;
+    const finish = (ok) => { if(done) return; done = true; cleanup(); resolve(ok); };
+    const onReady = () => { if(v.videoWidth > 0) finish(true); };
+    const cleanup = () => {
+      v.removeEventListener("loadedmetadata", onReady);
+      v.removeEventListener("loadeddata", onReady);
+      v.removeEventListener("playing", onReady);
+      clearTimeout(timer);
+    };
+    v.addEventListener("loadedmetadata", onReady);
+    v.addEventListener("loadeddata", onReady);
+    v.addEventListener("playing", onReady);
+    const timer = setTimeout(() => finish(v.videoWidth > 0), ms);
+  });
+}
+
+async function startCam(){
+  if(camStarting) return;
+  camStarting = true;
+  camDenied = false;
+  clearScanError();
+
+  try{
+    if(!window.isSecureContext && location.hostname !== "localhost"){ camBlocked("insecure"); return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camBlocked("unsupported"); return; }
+
+    stopTracks();
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+
+    const v = $("#video");
+    v.srcObject = stream;
+    v.muted = true;
+    v.setAttribute("playsinline", "");
+    await v.play().catch(() => {});
+
+    if(!(await waitForFrame(v))){ camBlocked("unsupported"); return; }
+
+    const facing = stream.getVideoTracks()[0]?.getSettings?.().facingMode;
+    v.classList.toggle("mirror", facing === "user");
+
+    stream.getVideoTracks().forEach((t) => {
+      t.onended = () => { camReady = false; stopTracks(); camBlocked("lost"); };
+    });
+
+    camReady = true;
+    setScanState("live");
+  }catch(e){
+    const n = e && e.name;
+    camReady = false;
+    if(n === "NotAllowedError" || n === "SecurityError"){ camDenied = true; camBlocked("denied"); }
+    else if(n === "NotFoundError" || n === "OverconstrainedError"){ camBlocked("none"); }
+    else if(n === "NotReadableError" || n === "AbortError"){ camBlocked("busy"); }
+    else { camBlocked("unsupported"); }
+  }finally{
+    camStarting = false;
+  }
+}
+
+async function ensureCam(){
+  if(camReady || camStarting) return;
+  if(camDenied){ camBlocked("denied"); return; }
+  await startCam();
+}
+
+function stopTracks(){
+  if(stream){ stream.getTracks().forEach((t) => { t.onended = null; t.stop(); }); stream = null; }
+}
+
+function stopCam(){
+  stopTracks();
+  camReady = false;
+  const v = $("#video");
+  if(v){ v.srcObject = null; v.classList.remove("mirror"); }
+  setScanState("idle");
+}
+
+$("#enableCam").onclick = startCam;
+$("#retryCam").onclick  = startCam;
+$("#sampleIdle").onclick    = runSampleFrame;
+$("#sampleBlocked").onclick = runSampleFrame;
+
+/* read the API response defensively — a crashed function returns HTML, not JSON */
+async function readJson(res){
+  const raw = await res.text();
+  try{
+    return JSON.parse(raw);
+  }catch{
+    const snippet = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+    throw new Error(`Server returned ${res.status} (not JSON). ${snippet || "Empty response."}`);
+  }
+}
+
+async function analyzeBase64(b64, badge){
+  setScanState("busy");
+  clearScanError();
+  try{
+    const res = await fetch(SCAN, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: b64, bias: kitchenBias }),
+    });
+    const data = await readJson(res);
+    lastRaw = JSON.stringify(data, null, 2);
+    renderDebug();
+
+    if(data.ok !== true || data.error){
+      throw new Error(data.error || `Vision service returned ${res.status}.`);
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    if(!items.length){
+      throw new Error(data.note || "No food items were recognised in that frame.");
+    }
+    renderScanResults(items, badge || (data.model ? "live vision · " + data.model : null));
+    return true;
+  }catch(err){
+    showScanError(err.message || "The vision service didn't respond.");
+    return false;
+  }finally{
+    setScanState(camReady ? "live" : "idle");
+  }
+}
+
+async function captureAndAnalyze(){
+  const v = $("#video"), c = $("#canvas");
+  const liveFrame = camReady && v && v.videoWidth > 0 && !v.paused;
+  if(!liveFrame){ await runSampleFrame(); return; }
+
+  const w = Math.min(v.videoWidth, 900);
+  const h = Math.round((v.videoHeight / v.videoWidth) * w);
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if(v.classList.contains("mirror")){ ctx.translate(w, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(v, 0, 0, w, h);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  await analyzeBase64(c.toDataURL("image/jpeg", 0.82).split(",")[1], null);
+}
+
+$("#captureBtn").onclick = captureAndAnalyze;
+
+/* ══════════ SAMPLE FRAME ══════════ */
+function drawSampleFrame(ctx, w, h){
+  // bench
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "#3a352c"); g.addColorStop(1, "#1d1b17");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = "#6b4f33";
+  ctx.beginPath(); ctx.ellipse(w*0.5, h*0.72, w*0.42, h*0.22, 0, 0, Math.PI*2); ctx.fill();
+
+  const circle = (x, y, r, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); };
+
+  // tomatoes
+  circle(w*0.26, h*0.62, w*0.075, "#b3372c");
+  circle(w*0.33, h*0.69, w*0.065, "#a83226");
+  circle(w*0.29, h*0.76, w*0.060, "#c03d30");
+  ctx.strokeStyle = "#3f6b34"; ctx.lineWidth = w*0.008; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(w*0.255, h*0.555); ctx.lineTo(w*0.268, h*0.535); ctx.stroke();
+
+  // red peppers
+  ctx.fillStyle = "#c2452a";
+  ctx.beginPath();
+  ctx.moveTo(w*0.50, h*0.86); ctx.quadraticCurveTo(w*0.54, h*0.74, w*0.585, h*0.80);
+  ctx.quadraticCurveTo(w*0.63, h*0.74, w*0.66, h*0.82);
+  ctx.quadraticCurveTo(w*0.70, h*0.78, w*0.71, h*0.86);
+  ctx.closePath(); ctx.fill();
+
+  // onions
+  circle(w*0.80, h*0.70, w*0.062, "#b0763f");
+  circle(w*0.87, h*0.75, w*0.052, "#9c6733");
+  ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.lineWidth = w*0.004;
+  ctx.beginPath(); ctx.arc(w*0.80, h*0.70, w*0.036, 0, Math.PI*2); ctx.stroke();
+
+  // oil bottle
+  ctx.fillStyle = "#c9a227";
+  ctx.fillRect(w*0.64, h*0.28, w*0.075, h*0.34);
+  ctx.fillStyle = "#8a6f1c";
+  ctx.fillRect(w*0.665, h*0.21, w*0.028, h*0.08);
+  ctx.fillStyle = "rgba(255,255,255,.18)";
+  ctx.fillRect(w*0.652, h*0.36, w*0.02, h*0.18);
+
+  // vignette so it reads like a photo
+  const v = ctx.createRadialGradient(w*0.5, h*0.5, h*0.2, w*0.5, h*0.5, h*0.8);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.55)");
+  ctx.fillStyle = v; ctx.fillRect(0, 0, w, h);
+}
+
+async function runSampleFrame(){
+  const c = $("#canvas");
+  c.width = 900; c.height = 600;
+  drawSampleFrame(c.getContext("2d"), 900, 600);
+
+  const b64 = c.toDataURL("image/jpeg", 0.85).split(",")[1];
+  const ok = await analyzeBase64(b64, "sample frame · live vision");
+  if(!ok){
+    clearScanError();
+    renderScanResults(SAMPLE_ITEMS, "sample data · vision offline");
+  }
+}
+
+/* identified items drop into the sheet, flag where they came from, then re-cost */
+function renderScanResults(items, badge){
+  const strict = visionMode === "strict";
+  if(!strict){
+    items.forEach((r) => {
+      rows.push({ id: uid++, name: r.name, buyQty: r.buyQty, unit: r.unit, buyPrice: r.buyPrice, useQty: r.useQty });
+    });
+    buildRows();
+    recalc();
+  }
+
+  const isSample = typeof badge === "string" && badge.indexOf("sample data") === 0;
+  if(items.length){
+    setProvenance(isSample ? "sample" : "live", isSample ? "sample data" : "live vision scan");
+    toast(strict
+      ? items.length + " identified — review before adding"
+      : items.length + (items.length === 1 ? " ingredient" : " ingredients") + " added to costing");
+  }
+
+  const tag = badge
+    ? `<div class="mono" style="font-size:8px;text-transform:uppercase;letter-spacing:.2em;color:var(--accent-text);background:var(--chip);padding:5px 10px;border-radius:999px;display:inline-block">${badge}</div>`
+    : "";
+
+  const host = document.createElement("div");
+  host.className = "scan-result";
+  host.style.cssText = "display:flex;flex-direction:column;gap:14px";
+  host.innerHTML = tag + items.map((r, i) => `
+    <div class="box" style="animation-delay:${i * 70}ms">
+      <div class="mono" style="display:flex;align-items:center;gap:8px;font-size:8.5px;text-transform:uppercase;letter-spacing:.28em;color:var(--faint)">
+        Identified${r.confidence != null ? `<span style="margin-left:auto">${r.confidence}%</span>` : ""}
+      </div>
+      <div style="font-weight:700;font-size:17px;margin-top:14px;line-height:1.35">${r.name}</div>
+      <div class="mono" style="font-size:28px;font-weight:700;margin-top:16px">${naira(r.buyPrice)}</div>
+      <div class="mono" style="font-size:10px;color:var(--faint);margin-top:8px">per ${r.buyQty} ${r.unit} · using ${r.useQty} ${r.unit}</div>
+      ${strict
+        ? `<button class="chipbtn" data-idx="${i}" style="width:100%;justify-content:center;margin-top:18px;font-weight:700;padding:12px">Add to costing</button>`
+        : `<div class="mono" style="display:flex;align-items:center;gap:8px;margin-top:18px;font-size:9px;
+             text-transform:uppercase;letter-spacing:.16em;color:var(--accent-text)">
+             <span style="width:5px;height:5px;border-radius:50%;background:var(--accent-text);display:inline-block"></span>
+             On costing sheet
+           </div>`}
+    </div>`).join("") + `
+    <button class="chipbtn" data-go="calculator" style="justify-content:center;font-weight:700;padding:14px">
+      Open costing sheet
+    </button>`;
+
+  $("#scanSide").querySelectorAll(".scan-result").forEach((n) => n.remove());
+  $("#scanSide").appendChild(host);
+
+  if(strict){
+    host.querySelectorAll("[data-idx]").forEach((b) => {
+      b.onclick = () => {
+        const r = items[+b.dataset.idx];
+        rows.push({ id: uid++, name: r.name, buyQty: r.buyQty, unit: r.unit, buyPrice: r.buyPrice, useQty: r.useQty });
+        buildRows(); recalc();
+        b.textContent = "Added ✓"; b.disabled = true; b.style.opacity = ".55";
+        toast(r.name + " added to costing");
+      };
+    });
+  }
+  renderDebug();
+}
+
+/* ══════════ RECEIPT ══════════ */function barcode(seed){
+  let h = 0;
+  for(let i=0;i<seed.length;i++) h = (h*31 + seed.charCodeAt(i)) & 0xffffffff;
+  let x = 0, out = "";
+  for(let i=0;i<52;i++){
+    h = (h*1103515245 + 12345) & 0x7fffffff;
+    const w = 1 + ((h >> (i%7)) % 3);
+    if(i % 2 === 0) out += `<rect x="${x}" y="0" width="${w}" height="38" fill="${theme==="dark"?"#fff":"#000"}"/>`;
+    x += w + 1.4;
+  }
+  return `<svg viewBox="0 0 200 46" style="width:190px;height:46px" role="img" aria-label="Audit barcode">${out}
+    <text x="100" y="45" text-anchor="middle" font-size="6.5" fill="${theme==="dark"?"#a1a1aa":"#555"}"
+      font-family="JetBrains Mono, monospace" letter-spacing="1.4">${seed}</text></svg>`;
+}
+
+function openReceipt(){
+  const { dishName, portions, waste } = readInputs();
+  const c = computeLocal();
+  const now = new Date();
+  const docId = `MISE-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,"0")}${String(now.getDate()).padStart(2,"0")}-${String(Math.abs(Math.round(c.totalCost))).slice(0,4).padStart(4,"0")}`;
+
+  const line = (l, v, cls="") => `<div class="rrow ${cls}"><span class="l mono">${l}</span><span class="v mono">${v}</span></div>`;
+
+  const items = rows.map((r) => {
+    const cost = costOf(r);
+    const rate = parseFloat(r.buyQty) > 0 ? parseFloat(r.buyPrice) / parseFloat(r.buyQty) : 0;
+    return `<div style="padding:8px 0">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px">
+        <span class="mono" style="font-size:11.5px;font-weight:500">${r.name || "—"}</span>
+        <span class="mono" style="font-size:12px;font-weight:700">${naira(cost)}</span>
+      </div>
+      <div class="mono pmuted" style="font-size:9px;color:var(--lo);margin-top:2px">
+        ${r.useQty} ${r.unit} @ ${naira(rate)}/${r.unit} · bought ${r.buyQty} ${r.unit} for ${naira(r.buyPrice)}
+      </div></div>`;
+  }).join("");
+
+  $("#receiptBody").innerHTML = `
+    <div style="text-align:center">
+      <div style="font-weight:800;font-size:15px;letter-spacing:.14em">MISE • COST AUDIT RECEIPT</div>
+      <div class="mono pmuted" style="font-size:10px;color:var(--lo);margin-top:8px">${now.toLocaleString("en-NG")}</div>
+      <div class="mono pmuted" style="font-size:9px;color:var(--faint);margin-top:4px">DOC ${docId}</div>
+    </div>
+    <div class="rule"></div>
+    <div class="kicker mono" style="letter-spacing:.24em;margin-bottom:8px">Batch</div>
+    ${line("Recipe", dishName)}
+    ${line("Yield", portions + " portions")}
+    ${line("Spoilage buffer", waste + "%")}
+    <div class="rule"></div>
+    <div class="kicker mono" style="letter-spacing:.24em;margin-bottom:12px">Raw materials</div>
+    ${items}
+    <div class="rule"></div>
+    ${line("Subtotal, raw materials", naira(c.baseCost), "muted")}
+    ${line("Spoilage / waste ("+waste+"%)", naira(c.wasteCost), "muted")}
+    ${line("Total production cost", naira(c.totalCost), "bold")}
+    <div class="rule"></div>
+    ${line("Cost per portion", naira(c.perPortion), "muted")}
+    ${line("Food cost ratio", c.foodCostPct + "%", "muted")}
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-top:12px">
+      <span class="mono" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Target price / portion</span>
+      <span class="mono" style="font-size:26px;font-weight:700;letter-spacing:-.03em">${naira(c.suggested)}</span>
+    </div>
+    <div class="rule"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+      ${barcode(docId)}
+      <div class="mono" style="font-size:9px;text-transform:uppercase;letter-spacing:.16em">Verified by OKX Agent Service Provider</div>
+      <div class="mono pmuted" style="font-size:8px;text-transform:uppercase;letter-spacing:.18em;color:var(--faint)">Registered on ${CHAIN_LABEL}</div>
+      <div class="mono pmuted" style="font-size:7.5px;color:var(--faint);word-break:break-all;text-align:center;line-height:1.7;padding:0 8px">${txLink(AGENT_TX)}</div>
+    </div>`;
+
+  $("#modal").classList.add("open");
+}
+
+$("#openReceipt").onclick = openReceipt;
+$("#closeModal").onclick = $("#closeModal2").onclick = () => $("#modal").classList.remove("open");
+$("#printBtn").onclick = () => window.print();
+$("#modal").addEventListener("click", (e) => { if(e.target.id === "modal") $("#modal").classList.remove("open"); });
+document.addEventListener("keydown", (e) => { if(e.key === "Escape") $("#modal").classList.remove("open"); });
+
+/* ══════════ AGENT TRACE ══════════ */
+const trace = {
+  catalog:  { state: "pending", ms: null, count: null, sources: [] },
+  compute:  { state: "pending", ms: null, lines: 0 },
+  verify:   { state: "pending", ms: null, at: null },
+};
+let traceOpen = false;
+
+function renderTrace(){
+  const panel = $("#tracePanel");
+  if(!traceOpen){ panel.hidden = true; return; }
+  panel.hidden = false;
+
+  const mark = (st) => st === "ok" ? "✓" : st === "local" ? "◆" : st === "fail" ? "✕" : "…";
+  const c = trace.catalog, k = trace.compute, v = trace.verify;
+
+  const steps = [
+    {
+      what: c.state === "ok"
+        ? "Queried Lagos wholesale price library"
+        : c.state === "local"
+          ? "Live library unreachable — local benchmark in use"
+          : "Querying Lagos wholesale price library",
+      meta: (c.state === "ok" || c.state === "local")
+        ? `${c.count} items · ${c.sources.join(", ")} · ${c.ms}ms`
+        : "",
+    },
+    {
+      what: "Computed waste buffer, portion cost and margin",
+      meta: k.state === "ok"
+        ? `${k.lines} ingredient${k.lines === 1 ? "" : "s"} · (buy price ÷ buy qty) × qty used · ${k.ms}ms`
+        : "",
+    },
+    {
+      what: v.state === "ok"
+        ? "Reconciled against on-chain ASP endpoint"
+        : v.state === "fail"
+          ? "ASP endpoint unreachable — local result shown"
+          : "Reconciling against on-chain ASP endpoint",
+      meta: v.state === "ok"
+        ? `agent ${AGENT_TX.slice(0,10)}… · ${v.ms}ms · ${v.at}`
+        : v.state === "fail" ? "showing locally computed figures" : "",
+    },
+  ];
+
+  panel.innerHTML = steps.map((s, i) => `
+    <div class="tstep">
+      <span class="idx mono">[${i+1}/3]</span>
+      <div class="body">
+        <div class="what">${mark(i === 0 ? c.state : i === 1 ? k.state : v.state)} ${s.what}</div>
+        ${s.meta ? `<div class="meta mono">${s.meta}</div>` : ""}
+      </div>
+    </div>`).join("");
+}
+
+$("#traceBtn").onclick = () => {
+  traceOpen = !traceOpen;
+  $("#traceBtn").textContent = traceOpen ? "[ Hide Agent Trace ]" : "[ View Agent Trace ]";
+  renderTrace();
+};
+
+/* ══════════ PRICE CATALOG (server-owned) ══════════ */
+async function loadCatalog(){
+  const t0 = performance.now();
+  try{
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "catalog" }),
+    });
+    const data = await res.json();
+    if(!data || data.ok !== true || !Array.isArray(data.catalog) || !data.catalog.length) throw 0;
+
+    catalog = data.catalog;
+    catalogState = "live";
+    trace.catalog = {
+      state: "ok",
+      ms: Math.round(performance.now() - t0),
+      count: data.catalog.length,
+      sources: Array.isArray(data.sources) ? data.sources : [],
+    };
+
+    if(rows.length === 0 && Array.isArray(data.starter) && data.starter.length){
+      rows = data.starter.map((x) => ({
+        id: uid++, name: x.name, buyQty: x.buyQty,
+        unit: x.unit, buyPrice: x.buyPrice, useQty: x.useQty,
+      }));
+    }
+    if(data.defaults){
+      $("#waste").value = data.defaults.wastePct;
+      $("#margin").value = data.defaults.marginPct;
+      $("#portions").value = data.defaults.batchSize;
+    }
+  }catch{
+    // silent fallback — the sheet still works, the pill says which set is in play
+    catalog = LIVE_PRICES;
+    catalogState = "local";
+    trace.catalog = {
+      state: "local",
+      ms: Math.round(performance.now() - t0),
+      count: LIVE_PRICES.length,
+      sources: ["local benchmark"],
+    };
+    if(rows.length === 0){
+      rows = LOCAL_STARTER.map((k) => {
+        const x = LIVE_PRICES.find((p) => p.key === k);
+        return { id: uid++, name: x.name, buyQty: x.buyQty, unit: x.unit, buyPrice: x.buyPrice, useQty: x.defaultUse };
+      });
+    }
+  }
+  buildRows();
+  buildCatalog();
+  recalc();
+}
+
+function buildCatalog(){
+  const wrap = $("#catalogWrap");
+
+  if(catalogState === "loading" || !catalog.length){
+    wrap.innerHTML = "";
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="mono" style="font-size:8.5px;text-transform:uppercase;letter-spacing:.24em;color:var(--faint);margin-bottom:10px">
+      From market library
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${catalog.map((c) => `
+        <button class="chipbtn" data-cat="${c.key}" style="padding:8px 14px;font-size:11.5px;font-weight:600">
+          ${c.name}
+          <span class="mono" style="color:var(--faint);font-size:10px">${naira(c.buyPrice)}/${c.buyQty}${c.unit === "lump sum" ? "" : " " + c.unit}</span>
+        </button>`).join("")}
+    </div>`;
+
+  wrap.querySelectorAll("[data-cat]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const c = catalog.find((x) => x.key === b.dataset.cat);
+      if(!c) return;
+      rows.push({
+        id: uid++, name: c.name, buyQty: c.buyQty,
+        unit: c.unit, buyPrice: c.buyPrice, useQty: c.defaultUse,
+      });
+      buildRows(); recalc();
+      toast(c.name + " added · " + c.source);
+    });
+  });
+}
+
+/* ══════════ DATA PROVENANCE ══════════ */
+function setProvenance(src, label){
+  const b = $("#provBadge"), t = $("#provText");
+  if(!b || !t) return;
+  b.dataset.src = src;
+  t.textContent = label;
+}
+
+/* ══════════ SETTINGS ══════════ */
+/* food cost % and margin are complements: margin = 100 - food cost */
+function applyFoodCost(fc){
+  $("#fcVal").textContent = fc + "%";
+  $("#margin").value = 100 - fc;
+  recalc();
+}
+function applyTrim(t){
+  $("#trimVal").textContent = "+" + t + "%";
+  $("#waste").value = t;
+  recalc();
+}
+
+function initSettings(){
+  $("#hashShort").textContent = AGENT_TX.slice(0, 6) + "…" + AGENT_TX.slice(-4);
+  $("#openOklink").href = EXPLORER;
+
+  $("#copyHash").onclick = async () => {
+    try{
+      await navigator.clipboard.writeText(AGENT_TX);
+      const b = $("#copyHash"); b.textContent = "Copied";
+      setTimeout(() => (b.textContent = "Copy"), 1600);
+    }catch{ toast("Couldn't reach the clipboard — hash is in the receipt too"); }
+  };
+
+  $("#fcRange").oninput   = (e) => applyFoodCost(+e.target.value);
+  $("#trimRange").oninput = (e) => applyTrim(+e.target.value);
+
+  $("#segPrecision").querySelectorAll("button").forEach((b) => {
+    b.onclick = () => {
+      visionMode = b.dataset.v;
+      $("#segPrecision").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      $("#precisionNote").textContent = visionMode === "strict"
+        ? "Strict holds identified items for review before they reach the sheet."
+        : "Auto-infer adds identified items straight to the sheet.";
+    };
+  });
+
+  $("#segBias").querySelectorAll("button").forEach((b) => {
+    b.onclick = () => {
+      kitchenBias = b.dataset.v;
+      $("#segBias").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      $("#biasNote").textContent = kitchenBias === "pastry"
+        ? "Pastry estimates in grams and millilitres for precision work."
+        : "Hot line estimates in bulk market units.";
+    };
+  });
+
+  $("#swDebug").onclick = () => {
+    debugJson = !debugJson;
+    $("#swDebug").classList.toggle("on", debugJson);
+    $("#swDebug").setAttribute("aria-checked", String(debugJson));
+    renderDebug();
+  };
+
+  $("#relaunch").onclick = openSplash;
+
+  $("#resetSession").onclick = () => {
+    rows = [];
+    lastRaw = null;
+    setProvenance("manual", "manual entry");
+    $("#scanSide").querySelectorAll(".scan-result").forEach((n) => n.remove());
+    clearScanError();
+    loadCatalog();
+    toast("Session reset");
+  };
+
+  // reflect the panel's own defaults into the engine
+  applyFoodCost(+$("#fcRange").value);
+  applyTrim(+$("#trimRange").value);
+}
+
+function renderDebug(){
+  const side = $("#scanSide");
+  side.querySelectorAll("#rawJson").forEach((n) => n.remove());
+  if(!debugJson || !lastRaw) return;
+  const pre = document.createElement("div");
+  pre.id = "rawJson";
+  pre.textContent = lastRaw;
+  side.appendChild(pre);
+}
+
+/* ══════════ SPLASH GATE ══════════ */
+let showSplash = true;
+
+function openSplash(){
+  showSplash = true;
+  $("#splash").classList.add("show");
+  document.body.classList.add("gated");
+  stopCam();
+}
+
+function enterApp(dest){
+  showSplash = false;
+  $("#splash").classList.remove("show");
+  document.body.classList.remove("gated");
+  go(dest);
+}
+
+$("#splashScan").onclick = () => enterApp("scan");   // go() starts the camera
+$("#splashDemo").onclick = () => enterApp("calculator");
+
+// the wordmark returns you to the gate
+document.querySelectorAll(".brandlink").forEach((el) => el.onclick = openSplash);
+
+/* ══════════ LIFECYCLE ══════════ */
+// release the camera when the page closes or is backgrounded; re-acquire on return
+window.addEventListener("beforeunload", stopCam);
+window.addEventListener("pagehide", stopCam);
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden){ stopTracks(); camReady = false; }
+  else if(tab === "scan" && !camDenied) ensureCam();
+});
+
+/* ══════════ INIT ══════════ */
+$("#agentShort").textContent = "ASP #" + AGENT_TX.slice(0,6) + "…" + AGENT_TX.slice(-4);
+$("#agentShort2").textContent = "#" + AGENT_TX.slice(0,6) + "…" + AGENT_TX.slice(-4);
+$("#homeExplorer").href = EXPLORER;
+
+applyTheme();
+buildNav();
+buildRows();
+buildCatalog();
+recalc();
+go("calculator");   // primed behind the gate
+initSettings();
+loadCatalog();
+openSplash();
+
+</script>
+</body>
+</html>
