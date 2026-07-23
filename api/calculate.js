@@ -41,6 +41,43 @@ const ROUTE_KEY = "POST /api/calculate";
 // not used to build payment requirements; the SDK does that itself.
 const DEFAULT_ASSET_NOTE = "USDT0 (0x779ded0c9e1022225f8e0630b35a9b54be713736), 6 decimals";
 
+// Bazaar-style declaration of the paid replay's shape, so an automated payer
+// (e.g. a payment-quote CLI) knows where dishName/ingredients/etc. go without
+// guessing. Advertised on the 402 challenge — both per-accepts extra and as a
+// top-level fallback — never on the free GET discovery response.
+const OUTPUT_SCHEMA = {
+  input: {
+    type: "http",
+    method: "POST",
+    bodyType: "json",
+    body: {
+      type: "object",
+      properties: {
+        dishName: { type: "string" },
+        batchSize: { type: "number" },
+        marginPct: { type: "number" },
+        wastePct: { type: "number" },
+        ingredients: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", description: "catalog key, e.g. 'tomatoes' — see the free catalog action" },
+              useQty: { type: "number" },
+              name: { type: "string" },
+              unit: { type: "string" },
+              buyQty: { type: "number" },
+              buyPrice: { type: "number" },
+            },
+            required: ["useQty"],
+          },
+        },
+      },
+      required: ["ingredients"],
+    },
+  },
+};
+
 /* ─────────────────────────────────────────────
    MARKET PRICE LIBRARY — single source of truth.
    Mile 12 Market (Lagos wholesale), Naija Food,
@@ -117,6 +154,7 @@ function getHttpServer() {
         network: NETWORK,
         payTo: PAY_TO,
         price: PRICE_USD,
+        extra: { outputSchema: OUTPUT_SCHEMA },
       },
       description: "One food-cost and menu-price calculation.",
       mimeType: "application/json",
@@ -248,7 +286,12 @@ module.exports = async (req, res) => {
   if (gate.type === "payment-error") {
     const { status, headers, body: errBody } = gate.response;
     Object.entries(headers || {}).forEach(([k, v]) => res.setHeader(k, v));
-    return res.status(status).json(errBody);
+    // Top-level fallback for payers that read outputSchema off the challenge
+    // root rather than per accepts[i].extra (both carry the same schema).
+    const finalBody = status === 402 && errBody && typeof errBody === "object"
+      ? { ...errBody, outputSchema: OUTPUT_SCHEMA }
+      : errBody;
+    return res.status(status).json(finalBody);
   }
 
   try {
