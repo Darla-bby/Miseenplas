@@ -51,30 +51,27 @@ const OUTPUT_SCHEMA = {
     method: "POST",
     bodyType: "json",
     body: {
-      type: "object",
-      properties: {
-        dishName: { type: "string" },
-        batchSize: { type: "number" },
-        marginPct: { type: "number" },
-        wastePct: { type: "number" },
-        ingredients: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              key: { type: "string", description: "catalog key, e.g. 'tomatoes' — see the free catalog action" },
-              useQty: { type: "number" },
-              name: { type: "string" },
-              unit: { type: "string" },
-              buyQty: { type: "number" },
-              buyPrice: { type: "number" },
-            },
-            required: ["useQty"],
+      dishName: { type: "string" },
+      batchSize: { type: "number" },
+      marginPct: { type: "number" },
+      wastePct: { type: "number" },
+      ingredients: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            key: { type: "string", description: "catalog key, e.g. 'tomatoes' — see the free catalog action" },
+            useQty: { type: "number" },
+            name: { type: "string" },
+            unit: { type: "string" },
+            buyQty: { type: "number" },
+            buyPrice: { type: "number" },
           },
+          required: ["useQty"],
         },
       },
-      required: ["ingredients"],
     },
+    required: ["ingredients"],
   },
 };
 
