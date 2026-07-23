@@ -9,8 +9,17 @@
 //   { ingredients: [...], ... }  → costing for a batch (PAID via x402)
 //
 // x402: the "calculate" action requires payment. Callers without a valid
-// payment proof get an HTTP 402 back describing how much to pay and where.
+// payment payload get an HTTP 402 carrying the challenge both as a base64
+// PAYMENT-REQUIRED header and as the JSON body.
 // Network advertised is eip155:196 (X Layer) per OKX ASP listing requirements.
+//
+// PAYMENT VERIFICATION — READ THIS:
+// This endpoint validates the STRUCTURE of an incoming X-PAYMENT payload
+// (scheme, network, asset, recipient, amount, expiry) but does NOT verify
+// the signature on-chain or settle the transfer. A well-formed payload that
+// was never signed by a funded wallet will still be accepted. Wiring in a
+// real facilitator (verify + settle) is the remaining work — see
+// verifyPayment() below.
 //
 // Formula:
 //   ingredient cost = (buyPrice / buyQty) * useQty
@@ -25,18 +34,28 @@
    ───────────────────────────────────────────── */
 const X402_CONFIG = {
   chainId: "eip155:196", // X Layer — required by OKX ASP listing
-  // x402 expects `asset` to be the token CONTRACT ADDRESS on that chain,
-  // not a ticker. Set PAYMENT_ASSET in Vercel to the USDT contract on
-  // X Layer. Until then the challenge is advertised with the ticker,
-  // which reviewers may reject.
-  asset: process.env.PAYMENT_ASSET || "USDT",
+
+  // `asset` is the token CONTRACT ADDRESS on that chain, not a ticker.
+  asset: process.env.PAYMENT_ASSET || null,
+
+  // EIP-712 domain fields for the token contract. The "exact" scheme signs an
+  // EIP-3009 transferWithAuthorization, and the client needs the contract's
+  // own name/version to build a matching domain separator. VERIFY these
+  // against the contract on the X Layer explorer — a mismatch means every
+  // signature a client produces will be rejected downstream.
+  assetName: process.env.PAYMENT_ASSET_NAME || "USDT",
+  assetVersion: process.env.PAYMENT_ASSET_VERSION || "1",
+
   payTo: process.env.PAYMENT_ADDRESS || null,
-  // Atomic units, as a string. USDT has 6 decimals, so 0.01 USDT = "10000".
+
+  // Atomic units, as a string. USDT on X Layer has 6 decimals,
+  // so 0.01 USDT = "10000".
   amount: process.env.CALCULATE_PRICE_ATOMIC || "10000",
-  // Human-readable equivalent, used only for the discovery response.
+
+  // Human-readable equivalent, used only in the discovery response.
   priceUsd: process.env.CALCULATE_PRICE_USD || "0.01",
+
   maxTimeoutSeconds: 300,
-  resource: "/api/calculate",
 };
 
 /* ─────────────────────────────────────────────
@@ -82,24 +101,38 @@ const r2 = (n) => Math.round(n * 100) / 100;
    x402 helpers
    ───────────────────────────────────────────── */
 
-// Builds the x402 challenge object. OKX review requires the full
-// structure: x402Version, resource, and an accepts[] entry carrying
-// scheme, network, asset, amount, payTo, maxTimeoutSeconds and extra.
-function buildChallenge() {
+// The resource must be an absolute URL, not a bare path — a caller that
+// only sees the challenge has to be able to address the endpoint from it.
+function absoluteResource(req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "mise-api-five.vercel.app";
+  return `${proto}://${host}/api/calculate`;
+}
+
+// Builds the x402 challenge. OKX review requires the full structure:
+// x402Version, resource, and an accepts[] entry carrying scheme, network,
+// asset, amount, payTo, maxTimeoutSeconds and extra.
+function buildChallenge(req) {
   return {
     x402Version: 1,
-    resource: X402_CONFIG.resource,
+    resource: absoluteResource(req),
     accepts: [
       {
         scheme: "exact",
         network: X402_CONFIG.chainId,
         asset: X402_CONFIG.asset,
         amount: X402_CONFIG.amount,
+        maxAmountRequired: X402_CONFIG.amount, // alias some clients look for
         payTo: X402_CONFIG.payTo,
         maxTimeoutSeconds: X402_CONFIG.maxTimeoutSeconds,
+        resource: absoluteResource(req),
+        description: "One food-cost and menu-price calculation.",
+        mimeType: "application/json",
+        // EIP-712 domain of the payment token, needed to sign an
+        // EIP-3009 transferWithAuthorization against it.
         extra: {
-          name: "Mise food-cost calculation",
-          description: "One food-cost and menu-price calculation per call.",
+          name: X402_CONFIG.assetName,
+          version: X402_CONFIG.assetVersion,
         },
       },
     ],
@@ -109,31 +142,102 @@ function buildChallenge() {
 // Sends the 402. The challenge goes in BOTH places: base64 in the
 // PAYMENT-REQUIRED header (what OKX's reviewer checks for) and as the
 // JSON body (what a human debugging the endpoint will read).
-function send402(res) {
-  const challenge = buildChallenge();
+function send402(req, res, reason) {
+  const challenge = buildChallenge(req);
   const encoded = Buffer.from(JSON.stringify(challenge), "utf8").toString("base64");
 
   res.setHeader("PAYMENT-REQUIRED", encoded);
-  res.setHeader("Access-Control-Expose-Headers", "PAYMENT-REQUIRED");
+  res.setHeader("X-PAYMENT-REQUIRED", encoded); // some clients look here
 
-  return res.status(402).json(Object.assign({ error: "Payment required" }, challenge));
+  return res.status(402).json(
+    Object.assign({ error: reason || "Payment required" }, challenge)
+  );
 }
 
-// Very intentionally simple: checks for a payment proof header.
-// Swap this for real on-chain / facilitator verification before going live —
-// this stub only unblocks local testing and listing checks.
-function hasValidPayment(req) {
-  const proof = req.headers["x-payment"] || req.headers["x-payment-proof"];
-  return Boolean(proof && String(proof).trim().length > 0);
+const sameAddress = (a, b) =>
+  typeof a === "string" && typeof b === "string" &&
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// Validates the shape and terms of an incoming X-PAYMENT payload.
+//
+// What this DOES check: that the header is base64 JSON, that it targets the
+// scheme and network we advertised, that the token, recipient and amount
+// match what we asked for, and that the authorization has not expired.
+//
+// What this does NOT check: the signature, the payer's balance, or whether
+// any transfer actually settled on chain. Those need an x402 facilitator
+// (a /verify + /settle service) or a signed-message check against an RPC
+// node. Until that is wired in, a fabricated-but-well-formed payload passes.
+function verifyPayment(req) {
+  const raw = req.headers["x-payment"] || req.headers["x-payment-proof"];
+  if (!raw || !String(raw).trim()) {
+    return { ok: false, reason: "Payment required" };
+  }
+
+  let decoded;
+  try {
+    decoded = JSON.parse(Buffer.from(String(raw).trim(), "base64").toString("utf8"));
+  } catch {
+    return { ok: false, reason: "X-PAYMENT must be base64-encoded JSON" };
+  }
+
+  if (decoded.x402Version !== 1) {
+    return { ok: false, reason: "Unsupported x402Version" };
+  }
+  if (decoded.scheme !== "exact") {
+    return { ok: false, reason: "Unsupported payment scheme" };
+  }
+  if (decoded.network !== X402_CONFIG.chainId) {
+    return { ok: false, reason: "Payment offered on the wrong network" };
+  }
+
+  const inner = decoded.payload || {};
+  const auth = inner.authorization || {};
+
+  if (!inner.signature) {
+    return { ok: false, reason: "Payment payload is missing its signature" };
+  }
+  if (X402_CONFIG.payTo && !sameAddress(auth.to, X402_CONFIG.payTo)) {
+    return { ok: false, reason: "Payment is addressed to the wrong recipient" };
+  }
+  if (decoded.asset && X402_CONFIG.asset && !sameAddress(decoded.asset, X402_CONFIG.asset)) {
+    return { ok: false, reason: "Payment offered in the wrong asset" };
+  }
+
+  let value;
+  try {
+    value = BigInt(String(auth.value ?? "0"));
+  } catch {
+    return { ok: false, reason: "Payment amount is not a valid integer" };
+  }
+  if (value < BigInt(X402_CONFIG.amount)) {
+    return { ok: false, reason: "Payment amount is below the price" };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (auth.validBefore && Number(auth.validBefore) < now) {
+    return { ok: false, reason: "Payment authorization has expired" };
+  }
+  if (auth.validAfter && Number(auth.validAfter) > now) {
+    return { ok: false, reason: "Payment authorization is not yet valid" };
+  }
+
+  return { ok: true, payer: auth.from || null };
 }
 
 module.exports = (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-PAYMENT");
-  res.setHeader("Access-Control-Expose-Headers", "PAYMENT-REQUIRED");
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "PAYMENT-REQUIRED, X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE"
+  );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  // Health probes: some availability checkers use HEAD before anything else.
+  if (req.method === "HEAD") return res.status(200).end();
 
   // Discovery — lets another agent see what this service offers.
   // Stays free and un-gated so agents can evaluate Mise before paying.
@@ -149,6 +253,7 @@ module.exports = (req, res) => {
         asset: X402_CONFIG.asset,
         amount: X402_CONFIG.amount,
         priceUsd: X402_CONFIG.priceUsd,
+        scheme: "exact",
       },
       actions: {
         catalog: { method: "POST", body: { action: "catalog" }, payment: "free" },
@@ -194,19 +299,34 @@ module.exports = (req, res) => {
     }
 
     /* ── calculate — paid via x402 ── */
-    if (!X402_CONFIG.payTo) {
+    if (!X402_CONFIG.payTo || !X402_CONFIG.asset) {
       // No wallet configured yet — fail loudly rather than silently giving
       // away the paid feature for free. Remove this block once
       // PAYMENT_ADDRESS is set in Vercel.
       return res.status(500).json({
         ok: false,
-        error: "PAYMENT_ADDRESS is not set on this deployment yet — x402 cannot be enforced.",
+        error: "PAYMENT_ADDRESS and PAYMENT_ASSET must both be set on this deployment before x402 can be enforced.",
       });
     }
 
-    if (!hasValidPayment(req)) {
-      return send402(res);
+    const payment = verifyPayment(req);
+    if (!payment.ok) {
+      return send402(req, res, payment.reason);
     }
+
+    // Acknowledge the payment we accepted. No transaction hash is included
+    // because this endpoint does not settle on chain — see verifyPayment().
+    res.setHeader(
+      "X-PAYMENT-RESPONSE",
+      Buffer.from(
+        JSON.stringify({
+          success: true,
+          network: X402_CONFIG.chainId,
+          payer: payment.payer,
+        }),
+        "utf8"
+      ).toString("base64")
+    );
 
     const {
       dishName = "Untitled",
