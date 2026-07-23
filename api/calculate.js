@@ -8,18 +8,12 @@
 //   { action: "catalog" }        → market price library + starter sheet (FREE)
 //   { ingredients: [...], ... }  → costing for a batch (PAID via x402)
 //
-// x402: the "calculate" action requires payment. Callers without a valid
-// payment payload get an HTTP 402 carrying the challenge both as a base64
-// PAYMENT-REQUIRED header and as the JSON body.
-// Network advertised is eip155:196 (X Layer) per OKX ASP listing requirements.
-//
-// PAYMENT VERIFICATION — READ THIS:
-// This endpoint validates the STRUCTURE of an incoming X-PAYMENT payload
-// (scheme, network, asset, recipient, amount, expiry) but does NOT verify
-// the signature on-chain or settle the transfer. A well-formed payload that
-// was never signed by a funded wallet will still be accepted. Wiring in a
-// real facilitator (verify + settle) is the remaining work — see
-// verifyPayment() below.
+// x402: the "calculate" action requires payment. Payment is enforced by
+// OKX's official x402 SDK (@okxweb3/x402-core + @okxweb3/x402-evm), which
+// delegates verification AND on-chain settlement to the OKX facilitator
+// (web3.okx.com) — unlike a hand-rolled check, a payload that was never
+// signed by a funded wallet is rejected before this handler ever computes
+// a result.
 //
 // Formula:
 //   ingredient cost = (buyPrice / buyQty) * useQty
@@ -27,36 +21,25 @@
 //   per portion     = total / batchSize
 //   menu price      = per portion / (1 - marginPct/100)
 
+const { OKXFacilitatorClient } = require("@okxweb3/x402-core");
+const { x402ResourceServer } = require("@okxweb3/x402-core/server");
+const { x402HTTPResourceServer } = require("@okxweb3/x402-core/http");
+const { ExactEvmScheme } = require("@okxweb3/x402-evm/exact/server");
+
 /* ─────────────────────────────────────────────
    x402 CONFIG
-   PAYMENT_ADDRESS must be set in Vercel env vars
-   once you have an X Layer wallet address.
+   OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE must be set in Vercel env
+   vars — these are your OKX facilitator (merchant) API credentials, not a
+   wallet key. Get them from the OKX developer portal.
    ───────────────────────────────────────────── */
-const X402_CONFIG = {
-  chainId: "eip155:196", // X Layer — required by OKX ASP listing
+const NETWORK = "eip155:196"; // X Layer — required by OKX ASP listing
+const PAY_TO = process.env.PAYMENT_ADDRESS || "0x9ff01ab21d7dd9e87ba3220c19fe3be49d5e0635";
+const PRICE_USD = process.env.CALCULATE_PRICE_USD || "$0.01"; // resolved to USDT0 (6dp) by the SDK's default money parser
+const ROUTE_KEY = "POST /api/calculate";
 
-  // `asset` is the token CONTRACT ADDRESS on that chain, not a ticker.
-  asset: process.env.PAYMENT_ASSET || null,
-
-  // EIP-712 domain fields for the token contract. The "exact" scheme signs an
-  // EIP-3009 transferWithAuthorization, and the client needs the contract's
-  // own name/version to build a matching domain separator. VERIFY these
-  // against the contract on the X Layer explorer — a mismatch means every
-  // signature a client produces will be rejected downstream.
-  assetName: process.env.PAYMENT_ASSET_NAME || "USDT",
-  assetVersion: process.env.PAYMENT_ASSET_VERSION || "1",
-
-  payTo: process.env.PAYMENT_ADDRESS || null,
-
-  // Atomic units, as a string. USDT on X Layer has 6 decimals,
-  // so 0.01 USDT = "10000".
-  amount: process.env.CALCULATE_PRICE_ATOMIC || "10000",
-
-  // Human-readable equivalent, used only in the discovery response.
-  priceUsd: process.env.CALCULATE_PRICE_USD || "0.01",
-
-  maxTimeoutSeconds: 300,
-};
+// Informational only (what the SDK resolves "$0.01" to by default on X Layer) —
+// not used to build payment requirements; the SDK does that itself.
+const DEFAULT_ASSET_NOTE = "USDT0 (0x779ded0c9e1022225f8e0630b35a9b54be713736), 6 decimals";
 
 /* ─────────────────────────────────────────────
    MARKET PRICE LIBRARY — single source of truth.
@@ -98,139 +81,80 @@ const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 const r2 = (n) => Math.round(n * 100) / 100;
 
 /* ─────────────────────────────────────────────
-   x402 helpers
+   x402 wiring — SDK-backed resource server
    ───────────────────────────────────────────── */
 
-// The resource must be an absolute URL, not a bare path — a caller that
-// only sees the challenge has to be able to address the endpoint from it.
-function absoluteResource(req) {
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers.host || "mise-api-five.vercel.app";
-  return `${proto}://${host}/api/calculate`;
+// Vercel keeps a warm instance between invocations, so build the server
+// once per cold start and cache the initialize() promise (it MUST resolve
+// before the first request is processed — it fetches facilitator support).
+let httpServerPromise = null;
+function getHttpServer() {
+  if (httpServerPromise) return httpServerPromise;
+
+  const apiKey = process.env.OKX_API_KEY;
+  const secretKey = process.env.OKX_SECRET_KEY;
+  const passphrase = process.env.OKX_PASSPHRASE;
+  if (!apiKey || !secretKey || !passphrase || !PAY_TO) {
+    // No facilitator credentials configured yet — fail loudly rather than
+    // silently giving away the paid feature for free.
+    return Promise.resolve(null);
+  }
+
+  const facilitator = new OKXFacilitatorClient({
+    apiKey,
+    secretKey,
+    passphrase,
+    syncSettle: true, // wait for on-chain confirmation before delivering the result
+  });
+
+  const resourceServer = new x402ResourceServer(facilitator)
+    .register(NETWORK, new ExactEvmScheme());
+
+  const httpServer = new x402HTTPResourceServer(resourceServer, {
+    [ROUTE_KEY]: {
+      accepts: {
+        scheme: "exact",
+        network: NETWORK,
+        payTo: PAY_TO,
+        price: PRICE_USD,
+      },
+      description: "One food-cost and menu-price calculation.",
+      mimeType: "application/json",
+    },
+  });
+
+  httpServerPromise = resourceServer.initialize().then(
+    () => httpServer,
+    (err) => {
+      httpServerPromise = null; // allow retry on the next request
+      throw err;
+    }
+  );
+  return httpServerPromise;
 }
 
-// Builds the x402 challenge. OKX review requires the full structure:
-// x402Version, resource, and an accepts[] entry carrying scheme, network,
-// asset, amount, payTo, maxTimeoutSeconds and extra.
-function buildChallenge(req) {
+// Minimal framework-agnostic adapter over Vercel's plain (req, res) handler —
+// the SDK's HTTPAdapter interface, not tied to Express/Next.
+function makeAdapter(req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "mise-api-five.vercel.app";
+  const path = (req.url || "/api/calculate").split("?")[0];
   return {
-    x402Version: 1,
-    resource: absoluteResource(req),
-    accepts: [
-      {
-        scheme: "exact",
-        network: X402_CONFIG.chainId,
-        asset: X402_CONFIG.asset,
-        amount: X402_CONFIG.amount,
-        maxAmountRequired: X402_CONFIG.amount, // alias some clients look for
-        payTo: X402_CONFIG.payTo,
-        maxTimeoutSeconds: X402_CONFIG.maxTimeoutSeconds,
-        resource: absoluteResource(req),
-        description: "One food-cost and menu-price calculation.",
-        mimeType: "application/json",
-        // EIP-712 domain of the payment token, needed to sign an
-        // EIP-3009 transferWithAuthorization against it.
-        extra: {
-          name: X402_CONFIG.assetName,
-          version: X402_CONFIG.assetVersion,
-        },
-      },
-    ],
+    getHeader: (name) => req.headers[String(name).toLowerCase()],
+    getMethod: () => req.method,
+    getPath: () => path,
+    getUrl: () => `${proto}://${host}${req.url || path}`,
+    getAcceptHeader: () => req.headers["accept"] || "",
+    getUserAgent: () => req.headers["user-agent"] || "",
   };
 }
 
-// Sends the 402. The challenge goes in BOTH places: base64 in the
-// PAYMENT-REQUIRED header (what OKX's reviewer checks for) and as the
-// JSON body (what a human debugging the endpoint will read).
-function send402(req, res, reason) {
-  const challenge = buildChallenge(req);
-  const encoded = Buffer.from(JSON.stringify(challenge), "utf8").toString("base64");
-
-  res.setHeader("PAYMENT-REQUIRED", encoded);
-  res.setHeader("X-PAYMENT-REQUIRED", encoded); // some clients look here
-
-  return res.status(402).json(
-    Object.assign({ error: reason || "Payment required" }, challenge)
-  );
-}
-
-const sameAddress = (a, b) =>
-  typeof a === "string" && typeof b === "string" &&
-  a.trim().toLowerCase() === b.trim().toLowerCase();
-
-// Validates the shape and terms of an incoming X-PAYMENT payload.
-//
-// What this DOES check: that the header is base64 JSON, that it targets the
-// scheme and network we advertised, that the token, recipient and amount
-// match what we asked for, and that the authorization has not expired.
-//
-// What this does NOT check: the signature, the payer's balance, or whether
-// any transfer actually settled on chain. Those need an x402 facilitator
-// (a /verify + /settle service) or a signed-message check against an RPC
-// node. Until that is wired in, a fabricated-but-well-formed payload passes.
-function verifyPayment(req) {
-  const raw = req.headers["x-payment"] || req.headers["x-payment-proof"];
-  if (!raw || !String(raw).trim()) {
-    return { ok: false, reason: "Payment required" };
-  }
-
-  let decoded;
-  try {
-    decoded = JSON.parse(Buffer.from(String(raw).trim(), "base64").toString("utf8"));
-  } catch {
-    return { ok: false, reason: "X-PAYMENT must be base64-encoded JSON" };
-  }
-
-  if (decoded.x402Version !== 1) {
-    return { ok: false, reason: "Unsupported x402Version" };
-  }
-  if (decoded.scheme !== "exact") {
-    return { ok: false, reason: "Unsupported payment scheme" };
-  }
-  if (decoded.network !== X402_CONFIG.chainId) {
-    return { ok: false, reason: "Payment offered on the wrong network" };
-  }
-
-  const inner = decoded.payload || {};
-  const auth = inner.authorization || {};
-
-  if (!inner.signature) {
-    return { ok: false, reason: "Payment payload is missing its signature" };
-  }
-  if (X402_CONFIG.payTo && !sameAddress(auth.to, X402_CONFIG.payTo)) {
-    return { ok: false, reason: "Payment is addressed to the wrong recipient" };
-  }
-  if (decoded.asset && X402_CONFIG.asset && !sameAddress(decoded.asset, X402_CONFIG.asset)) {
-    return { ok: false, reason: "Payment offered in the wrong asset" };
-  }
-
-  let value;
-  try {
-    value = BigInt(String(auth.value ?? "0"));
-  } catch {
-    return { ok: false, reason: "Payment amount is not a valid integer" };
-  }
-  if (value < BigInt(X402_CONFIG.amount)) {
-    return { ok: false, reason: "Payment amount is below the price" };
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (auth.validBefore && Number(auth.validBefore) < now) {
-    return { ok: false, reason: "Payment authorization has expired" };
-  }
-  if (auth.validAfter && Number(auth.validAfter) > now) {
-    return { ok: false, reason: "Payment authorization is not yet valid" };
-  }
-
-  return { ok: true, payer: auth.from || null };
-}
-
-module.exports = (req, res) => {
+module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-PAYMENT");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, PAYMENT-SIGNATURE");
   res.setHeader(
     "Access-Control-Expose-Headers",
-    "PAYMENT-REQUIRED, X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE"
+    "PAYMENT-REQUIRED, PAYMENT-SIGNATURE, PAYMENT-RESPONSE"
   );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
@@ -245,14 +169,14 @@ module.exports = (req, res) => {
     return res.status(200).json({
       ok: true,
       service: "Mise — food costing",
-      agent: { name: "Mise", role: "asp", chain: X402_CONFIG.chainId },
+      agent: { name: "Mise", role: "asp", chain: NETWORK },
       payment: {
         required: true,
         action: "calculate",
-        network: X402_CONFIG.chainId,
-        asset: X402_CONFIG.asset,
-        amount: X402_CONFIG.amount,
-        priceUsd: X402_CONFIG.priceUsd,
+        network: NETWORK,
+        payTo: PAY_TO,
+        priceUsd: PRICE_USD,
+        asset: DEFAULT_ASSET_NOTE,
         scheme: "exact",
       },
       actions: {
@@ -276,58 +200,58 @@ module.exports = (req, res) => {
     return res.status(405).json({ ok: false, error: "Use GET for discovery or POST to calculate." });
   }
 
+  let body;
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: "Invalid request body" });
+  }
 
-    /* ── catalog — free, no payment gate ── */
-    if (body.action === "catalog") {
-      return res.status(200).json({
-        ok: true,
-        currency: DEFAULTS.currency,
-        defaults: DEFAULTS,
-        updated: "2026-07-19",
-        sources: ["Mile 12 Market", "Naija Food", "Jumia Groceries"],
-        catalog: PRICE_BOOK,
-        starter: STARTER
-          .map((s) => {
-            const item = PRICE_BOOK.find((p) => p.key === s.key);
-            return item ? Object.assign({}, item, { useQty: s.useQty }) : null;
-          })
-          .filter(Boolean),
-        note: "Estimates only. Market prices move weekly — confirm against your own purchase.",
-      });
-    }
+  /* ── catalog — free, no payment gate ── */
+  if (body.action === "catalog") {
+    return res.status(200).json({
+      ok: true,
+      currency: DEFAULTS.currency,
+      defaults: DEFAULTS,
+      updated: "2026-07-19",
+      sources: ["Mile 12 Market", "Naija Food", "Jumia Groceries"],
+      catalog: PRICE_BOOK,
+      starter: STARTER
+        .map((s) => {
+          const item = PRICE_BOOK.find((p) => p.key === s.key);
+          return item ? Object.assign({}, item, { useQty: s.useQty }) : null;
+        })
+        .filter(Boolean),
+      note: "Estimates only. Market prices move weekly — confirm against your own purchase.",
+    });
+  }
 
-    /* ── calculate — paid via x402 ── */
-    if (!X402_CONFIG.payTo || !X402_CONFIG.asset) {
-      // No wallet configured yet — fail loudly rather than silently giving
-      // away the paid feature for free. Remove this block once
-      // PAYMENT_ADDRESS is set in Vercel.
-      return res.status(500).json({
-        ok: false,
-        error: "PAYMENT_ADDRESS and PAYMENT_ASSET must both be set on this deployment before x402 can be enforced.",
-      });
-    }
+  /* ── calculate — paid via x402 (SDK-enforced) ── */
+  const httpServer = await getHttpServer();
+  if (!httpServer) {
+    return res.status(500).json({
+      ok: false,
+      error: "OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE and PAYMENT_ADDRESS must all be set on this deployment before x402 can be enforced.",
+    });
+  }
 
-    const payment = verifyPayment(req);
-    if (!payment.ok) {
-      return send402(req, res, payment.reason);
-    }
+  const adapter = makeAdapter(req);
+  const context = { adapter, path: adapter.getPath(), method: req.method };
 
-    // Acknowledge the payment we accepted. No transaction hash is included
-    // because this endpoint does not settle on chain — see verifyPayment().
-    res.setHeader(
-      "X-PAYMENT-RESPONSE",
-      Buffer.from(
-        JSON.stringify({
-          success: true,
-          network: X402_CONFIG.chainId,
-          payer: payment.payer,
-        }),
-        "utf8"
-      ).toString("base64")
-    );
+  let gate;
+  try {
+    gate = await httpServer.processHTTPRequest(context);
+  } catch (err) {
+    return res.status(502).json({ ok: false, error: "Payment facilitator error", detail: err.message });
+  }
 
+  if (gate.type === "payment-error") {
+    const { status, headers, body: errBody } = gate.response;
+    Object.entries(headers || {}).forEach(([k, v]) => res.setHeader(k, v));
+    return res.status(status).json(errBody);
+  }
+
+  try {
     const {
       dishName = "Untitled",
       batchSize = DEFAULTS.batchSize,
@@ -371,12 +295,12 @@ module.exports = (req, res) => {
 
     lines.forEach((l) => { l.sharePct = baseCost > 0 ? Math.round((l.cost / baseCost) * 100) : 0; });
 
-    return res.status(200).json({
+    const result = {
       ok: true,
       agent: {
         name: "Mise",
         role: "asp",
-        chain: X402_CONFIG.chainId,
+        chain: NETWORK,
         tx: "0xc2786fb119e5c05d46eb47e7e4e5a9d4b418fbc97f2f7ffe39897ed2e9eafb0d",
       },
       dishName,
@@ -394,7 +318,26 @@ module.exports = (req, res) => {
       vatRate: DEFAULTS.vatRate,
       foodCostPercentage: foodCostPct,
       generatedAt: new Date().toISOString(),
-    });
+    };
+
+    if (gate.type === "payment-verified") {
+      const settlement = await httpServer.processSettlement(
+        gate.paymentPayload,
+        gate.paymentRequirements,
+        gate.declaredExtensions,
+        { request: context, responseBody: Buffer.from(JSON.stringify(result)) }
+      );
+
+      if (!settlement.success) {
+        const { status, headers, body: errBody } = settlement.response;
+        Object.entries(headers || {}).forEach(([k, v]) => res.setHeader(k, v));
+        return res.status(status).json(errBody);
+      }
+
+      Object.entries(settlement.headers || {}).forEach(([k, v]) => res.setHeader(k, v));
+    }
+
+    return res.status(200).json(result);
   } catch (err) {
     return res.status(400).json({ ok: false, error: "Invalid request body" });
   }
