@@ -25,9 +25,18 @@
    ───────────────────────────────────────────── */
 const X402_CONFIG = {
   chainId: "eip155:196", // X Layer — required by OKX ASP listing
-  asset: "USDT",         // adjust if you want a different settlement asset
+  // x402 expects `asset` to be the token CONTRACT ADDRESS on that chain,
+  // not a ticker. Set PAYMENT_ASSET in Vercel to the USDT contract on
+  // X Layer. Until then the challenge is advertised with the ticker,
+  // which reviewers may reject.
+  asset: process.env.PAYMENT_ASSET || "USDT",
   payTo: process.env.PAYMENT_ADDRESS || null,
-  priceUsd: process.env.CALCULATE_PRICE_USD || "0.01", // per calculation call
+  // Atomic units, as a string. USDT has 6 decimals, so 0.01 USDT = "10000".
+  amount: process.env.CALCULATE_PRICE_ATOMIC || "10000",
+  // Human-readable equivalent, used only for the discovery response.
+  priceUsd: process.env.CALCULATE_PRICE_USD || "0.01",
+  maxTimeoutSeconds: 300,
+  resource: "/api/calculate",
 };
 
 /* ─────────────────────────────────────────────
@@ -73,24 +82,41 @@ const r2 = (n) => Math.round(n * 100) / 100;
    x402 helpers
    ───────────────────────────────────────────── */
 
-// Builds the 402 challenge body. This is what an agent/wallet reads to
-// know how much to pay, in what asset, on what chain, and to whom.
-function build402Body() {
+// Builds the x402 challenge object. OKX review requires the full
+// structure: x402Version, resource, and an accepts[] entry carrying
+// scheme, network, asset, amount, payTo, maxTimeoutSeconds and extra.
+function buildChallenge() {
   return {
     x402Version: 1,
-    error: "Payment required",
+    resource: X402_CONFIG.resource,
     accepts: [
       {
         scheme: "exact",
         network: X402_CONFIG.chainId,
         asset: X402_CONFIG.asset,
+        amount: X402_CONFIG.amount,
         payTo: X402_CONFIG.payTo,
-        maxAmountRequired: X402_CONFIG.priceUsd,
-        resource: "/api/calculate",
-        description: "Mise food-cost calculation (per call)",
+        maxTimeoutSeconds: X402_CONFIG.maxTimeoutSeconds,
+        extra: {
+          name: "Mise food-cost calculation",
+          description: "One food-cost and menu-price calculation per call.",
+        },
       },
     ],
   };
+}
+
+// Sends the 402. The challenge goes in BOTH places: base64 in the
+// PAYMENT-REQUIRED header (what OKX's reviewer checks for) and as the
+// JSON body (what a human debugging the endpoint will read).
+function send402(res) {
+  const challenge = buildChallenge();
+  const encoded = Buffer.from(JSON.stringify(challenge), "utf8").toString("base64");
+
+  res.setHeader("PAYMENT-REQUIRED", encoded);
+  res.setHeader("Access-Control-Expose-Headers", "PAYMENT-REQUIRED");
+
+  return res.status(402).json(Object.assign({ error: "Payment required" }, challenge));
 }
 
 // Very intentionally simple: checks for a payment proof header.
@@ -104,6 +130,7 @@ function hasValidPayment(req) {
 module.exports = (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-PAYMENT");
+  res.setHeader("Access-Control-Expose-Headers", "PAYMENT-REQUIRED");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -120,6 +147,7 @@ module.exports = (req, res) => {
         action: "calculate",
         network: X402_CONFIG.chainId,
         asset: X402_CONFIG.asset,
+        amount: X402_CONFIG.amount,
         priceUsd: X402_CONFIG.priceUsd,
       },
       actions: {
@@ -177,7 +205,7 @@ module.exports = (req, res) => {
     }
 
     if (!hasValidPayment(req)) {
-      return res.status(402).json(build402Body());
+      return send402(res);
     }
 
     const {
